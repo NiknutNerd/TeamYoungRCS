@@ -5,6 +5,11 @@
 const int I2CDataPin = 0;
 const int I2CClockPin = 1;
 
+const int GPSResetPin = 11;
+
+const int UARTTXPin = 12;
+const int UARTRXPin = 13;
+
 const int solenoidAPin = 2;
 const int solenoidBPin = 3;
 
@@ -13,7 +18,12 @@ const int servoPWMPin = 5;
 
 const int regulator6VPin = 10;
 
-const int switchPin = 16;
+const int powerGood6VPin = 14;
+const int powerGood3VPin = 15;
+
+const int switchPin = A0;
+
+const int buzzerPin = 17;
 
 const int brightLEDPin = 9;
 const int debugLED1 = 18;
@@ -23,13 +33,7 @@ const int debugLED4 = 21;
 
 unsigned long currentTime = millis();
 int loops;
-/*
-int addTwoNumbers(int a, int b);
-class Timer{
-  public:
-    Timer(unsigned long initTime);
-}
-*/
+
 class Timer{
   private:
     unsigned long startTime;
@@ -51,6 +55,8 @@ class Timer{
 Timer LEDTimer(currentTime);
 //Timer testTimer(currentTime);
 String color = "None";
+int switchState;
+int lastSwitchState = switchState;
 
 void setup() {
   // put your setup code here, to run once:
@@ -73,38 +79,51 @@ void loop() {
   currentTime = millis(); 
   String lastColor = color;
   loops++;
-  
-  if(LEDTimer.getTime() < 1000){
-    digitalWrite(debugLED1, HIGH);
-    color = "Red";
-  }else if(LEDTimer.getTime() < 2000){
-    digitalWrite(debugLED1, LOW);
-    digitalWrite(debugLED2, HIGH);
-    color = "Green";
-  }else if(LEDTimer.getTime() < 3000){
-    digitalWrite(debugLED2, LOW);
-    digitalWrite(debugLED3, HIGH);
-    color = "Blue";
-  }else if(LEDTimer.getTime() < 4000){
-    digitalWrite(debugLED3, LOW);
-    digitalWrite(debugLED4, HIGH);
-    color = "White";
+  switchState = digitalRead(switchPin);
+  if(switchState == HIGH && switchState != lastSwitchState){
+    LEDTimer.resetTime();
+  }
+  if(true){
+    if(LEDTimer.getTime() < 1000){
+      digitalWrite(debugLED1, HIGH);
+      color = "Red";
+    }else if(LEDTimer.getTime() < 2000){
+      digitalWrite(debugLED1, LOW);
+      digitalWrite(debugLED2, HIGH);
+      color = "Green";
+    }else if(LEDTimer.getTime() < 3000){
+      digitalWrite(debugLED2, LOW);
+      digitalWrite(debugLED3, HIGH);
+      color = "Blue";
+    }else if(LEDTimer.getTime() < 4000){
+      digitalWrite(debugLED3, LOW);
+      digitalWrite(debugLED4, HIGH);
+      color = "White";
+    }else{
+      digitalWrite(debugLED1, LOW);
+      digitalWrite(debugLED2, LOW);
+      digitalWrite(debugLED3, LOW);
+      digitalWrite(debugLED4, LOW);
+      color = "\n";
+      LEDTimer.resetTime();
+    } 
   }else{
     digitalWrite(debugLED1, LOW);
-    digitalWrite(debugLED2, LOW);
-    digitalWrite(debugLED3, LOW);
-    digitalWrite(debugLED4, LOW);
-    color = "\n";
-    LEDTimer.resetTime();
-  } 
+      digitalWrite(debugLED2, LOW);
+      digitalWrite(debugLED3, LOW);
+      digitalWrite(debugLED4, LOW);
+      color = "\n";
+  }
+  
   if(!color.equals(lastColor)){
-    Serial.print(loops);
+    //Serial.print(loops);
     loops = 0;
     Serial.print(color);
+    Serial.print(switchState);
+  }
+  //Serial.print(switchState);
+  if(switchState != lastSwitchState){
+    Serial.print(switchState);
   } 
-}
-
-int addTwoNumbers(int a, int b) {
-  //implement
-  return a + b;
+  lastSwitchState = switchState;
 }
