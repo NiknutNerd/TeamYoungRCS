@@ -1,6 +1,20 @@
 #include <math.h>
+#include <Wire.h>
+#include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
+#include <Adafruit_BME680.h>
+
+/*
+#define BME_SCK 13;
+#define BME_MISO 12;
+#define BME_MOSI 11;
+#define BME_CS 10;
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+Adafruit_BME680 bme;
+*/
 
 const int I2CDataPin = 0;
 const int I2CClockPin = 1;
@@ -31,6 +45,9 @@ const int debugLED2 = 19;
 const int debugLED3 = 20;
 const int debugLED4 = 21;
 
+const double minCycleTime = 1.0/20.0;
+const double minCycleTimeMillis = minCycleTime * 1000;
+
 unsigned long currentTime = millis();
 int loops;
 
@@ -53,23 +70,48 @@ class Timer{
 };
 
 Timer LEDTimer(currentTime);
+Timer bmeTimer(currentTime);
+Timer solenoidTimer(currentTime);
 //Timer testTimer(currentTime);
+
 String color = "None";
 int switchState;
 int lastSwitchState = switchState;
+int solenoidState = 0;
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
+
+  //BME Stuff
+  /*
+  while(!Serial);
+  if(!bme.begin()){
+    Serial.println(F("Can't find BME"));
+    while(1);
+  }
+  bme.setTemperatureOversampling(BME680_OS_8X);
+  bme.setHumidityOversampling(BME680_OS_2x);
+  bme.setPressureOversampling(BME680_OS_4X);
+  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+  bme.setGasHeater(320, 150);
+  */
+
   pinMode(brightLEDPin, OUTPUT);
   pinMode(debugLED1, OUTPUT);
   pinMode(debugLED2, OUTPUT);
   pinMode(debugLED3, OUTPUT);
   pinMode(debugLED4, OUTPUT);
 
+  pinMode(solenoidAPin, OUTPUT);
+  pinMode(solenoidBPin, OUTPUT);
+
   pinMode(switchPin, INPUT);
+
   currentTime = millis();
   LEDTimer.resetTime();
+  bmeTimer.resetTime();
+  solenoidTimer.resetTime();
   //testTimer.resetTime();
   loops = 0;
 }
@@ -119,11 +161,53 @@ void loop() {
     //Serial.print(loops);
     loops = 0;
     Serial.print(color);
-    Serial.print(switchState);
+    //Serial.print(switchState);
+    Serial.print(solenoidState);
   }
   //Serial.print(switchState);
   if(switchState != lastSwitchState){
     Serial.print(switchState);
   } 
   lastSwitchState = switchState;
+
+  if(true){
+    if(solenoidTimer.getTime() < 1000){
+      digitalWrite(solenoidAPin, LOW);
+      digitalWrite(solenoidBPin, LOW);
+      solenoidState = 0;
+    }else if(solenoidTimer.getTime() < 2000){
+      digitalWrite(solenoidAPin, HIGH);
+      digitalWrite(solenoidBPin, LOW);
+      solenoidState = 1;
+    }else if(solenoidTimer.getTime() < 3000){
+      digitalWrite(solenoidBPin, HIGH);
+      digitalWrite(solenoidAPin, LOW);
+      solenoidState = 2;
+    }else{
+      solenoidTimer.resetTime();
+    }
+  }
+
+  //BME Stuff
+  /*
+  if(! bme.performReading()){
+    Serial.println("Reading Failed");
+    return;
+  }
+  if(bmeTimer.getTime() > 1000){
+    Serial.print("Temperature: ");
+    Serial.println(bme.temperature);
+    Serial.print("Pressure: ");
+    Serial.println(bme.pressure / 100.0);
+    Serial.print("Humidity: ");
+    Serial.println(bme.humidity);
+    Serial.print("Gas: ");
+    Serial.println(bme.gas_resistance / 1000.0);
+    Serial.print("Approx. Altitude");
+    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    Serial.println(" m");
+    Serial.println();
+    bmeTimer.resetTime();
+  }
+  */
 }
