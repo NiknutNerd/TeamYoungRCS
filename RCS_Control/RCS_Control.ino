@@ -35,7 +35,7 @@ const int regulator6VPin = 10;
 const int powerGood6VPin = 14;
 const int powerGood3VPin = 15;
 
-const int switchPin = A0;
+const int switchPin = 16;
 
 const int buzzerPin = 17;
 
@@ -162,7 +162,7 @@ void loop() {
     loops = 0;
     Serial.print(color);
     //Serial.print(switchState);
-    Serial.print(solenoidState);
+    //Serial.print(solenoidState);
   }
   //Serial.print(switchState);
   if(switchState != lastSwitchState){
@@ -170,20 +170,24 @@ void loop() {
   } 
   lastSwitchState = switchState;
 
-  if(true){
-    if(solenoidTimer.getTime() < 1000){
-      digitalWrite(solenoidAPin, LOW);
-      digitalWrite(solenoidBPin, LOW);
-      solenoidState = 0;
-    }else if(solenoidTimer.getTime() < 2000){
+  if(false){
+    if(solenoidTimer.getTime() < 50){
       digitalWrite(solenoidAPin, HIGH);
       digitalWrite(solenoidBPin, LOW);
+      solenoidState = 0;
+    }else if(solenoidTimer.getTime() < 100){
+      digitalWrite(solenoidAPin, LOW);
+      digitalWrite(solenoidBPin, HIGH);
       solenoidState = 1;
-    }else if(solenoidTimer.getTime() < 3000){
+    }
+    /*
+    else if(solenoidTimer.getTime() < 150){
       digitalWrite(solenoidBPin, HIGH);
       digitalWrite(solenoidAPin, LOW);
       solenoidState = 2;
-    }else{
+    }
+    */
+    else{
       solenoidTimer.resetTime();
     }
   }
