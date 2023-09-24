@@ -45,7 +45,7 @@ const int debugLED2 = 3;
 const int debugLED3 = 20;
 const int debugLED4 = 21;
 
-const double minCycleTime = 1.0/5.0;
+const double minCycleTime = 1.0/20.0;
 const double minCycleTimeMillis = minCycleTime * 1000;
 double onPercent;
 double offPercent;
