@@ -24,8 +24,8 @@ const int GPSResetPin = 11;
 const int UARTTXPin = 12;
 const int UARTRXPin = 13;
 
-const int solenoidAPin = 2;
-const int solenoidBPin = 3;
+const int solenoidAPin = 18;
+const int solenoidBPin = 19;
 
 const int servoFeedbackPin = 4;
 const int servoPWMPin = 5;
@@ -40,27 +40,31 @@ const int switchPin = 16;
 const int buzzerPin = 17;
 
 const int brightLEDPin = 9;
-const int debugLED1 = 18;
-const int debugLED2 = 19;
+const int debugLED1 = 2;
+const int debugLED2 = 3;
 const int debugLED3 = 20;
 const int debugLED4 = 21;
 
-const double minCycleTime = 1.0/20.0;
+const double minCycleTime = 1.0/5.0;
 const double minCycleTimeMillis = minCycleTime * 1000;
+double onPercent;
+double offPercent;
+long onTime;
+long offTime;
 
-unsigned long currentTime = millis();
+long currentTime = millis();
 int loops;
 
 class Timer{
   private:
-    unsigned long startTime;
-    unsigned long timeSinceStart;
+    long startTime;
+    long timeSinceStart;
   public:
-    Timer(unsigned long initTime){
+    Timer(long initTime){
       startTime = initTime;
     }
-    unsigned long getTime(){
-      unsigned long timeSinceStart = currentTime - startTime;
+    long getTime(){
+      long timeSinceStart = currentTime - startTime;
       return timeSinceStart;
     }
     void resetTime(){
@@ -69,15 +73,49 @@ class Timer{
     }
 };
 
+class CountdownTimer{
+  private:
+    long targetTime;
+    long initialTime;
+  public:
+    CountdownTimer(long time){
+      initialTime = time;
+      targetTime = currentTime + time; 
+    }
+    long getTimeLeft(){
+      long timeLeft = targetTime - currentTime;
+      if(timeLeft < 0){
+        timeLeft = -1;
+      }
+      return timeLeft;
+    }
+    void changeTimer(long newTime){
+      initialTime = newTime;
+      targetTime = currentTime + newTime;
+    }
+};
+
 Timer LEDTimer(currentTime);
 Timer bmeTimer(currentTime);
 Timer solenoidTimer(currentTime);
+Timer PWMTimer(currentTime);
 //Timer testTimer(currentTime);
+
+CountdownTimer aCountdown(0);
+CountdownTimer bCountdown(0);
+CountdownTimer aOnCountdown(0);
+CountdownTimer aOffCountdown(0);
+CountdownTimer bOnCountdown(0);
+CountdownTimer bOffCountdown(0);
+CountdownTimer testCountdown(0);
 
 String color = "None";
 int switchState;
 int lastSwitchState = switchState;
 int solenoidState = 0;
+
+void PWMSetup(double percent);
+void PWMLoop();
 
 void setup() {
   // put your setup code here, to run once:
@@ -112,7 +150,10 @@ void setup() {
   LEDTimer.resetTime();
   bmeTimer.resetTime();
   solenoidTimer.resetTime();
+  PWMTimer.resetTime();
   //testTimer.resetTime();
+  testCountdown.changeTimer(5000);
+  Serial.println(testCountdown.getTimeLeft());
   loops = 0;
 }
 
@@ -125,7 +166,44 @@ void loop() {
   if(switchState == HIGH && switchState != lastSwitchState){
     LEDTimer.resetTime();
   }
+  if(false){
+    if(testCountdown.getTimeLeft() > 0){
+      digitalWrite(debugLED3, HIGH);
+      Serial.print("LED On, Time Left: ");
+      Serial.println(testCountdown.getTimeLeft());
+    }else{
+      digitalWrite(debugLED3, LOW);
+      Serial.print("LED Off, Time Left: ");
+      Serial.println(testCountdown.getTimeLeft());
+    }
+  }
   if(true){
+    if(solenoidTimer.getTime() < 1000){
+      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
+        PWMSetup(.75);
+      }
+    }else if(solenoidTimer.getTime() < 2000){
+      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
+        PWMSetup(.25);
+      }
+    }else if(solenoidTimer.getTime() < 3000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(-.25);
+      }
+    }else if(solenoidTimer.getTime() < 4000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(-.75);
+      }
+    }else if(solenoidTimer.getTime() < 5000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(0);
+      }
+    }else{
+      solenoidTimer.resetTime();
+    }
+    PWMLoop();
+  }
+  if(false){
     if(LEDTimer.getTime() < 1000){
       digitalWrite(debugLED1, HIGH);
       color = "Red";
@@ -214,4 +292,79 @@ void loop() {
     bmeTimer.resetTime();
   }
   */
+}
+
+void PWMSetup(double percent){
+  if(percent = 0){
+    aCountdown.changeTimer(0);
+    aOnCountdown.changeTimer(0);
+    aOffCountdown.changeTimer(0);
+
+    bCountdown.changeTimer(0);
+    bOnCountdown.changeTimer(0);
+    bOffCountdown.changeTimer(0);
+  }else if(percent > 0){
+    bCountdown.changeTimer(0);
+    bOnCountdown.changeTimer(0);
+    bOffCountdown.changeTimer(0);
+
+    onPercent = percent;
+    offPercent = 1 - percent;
+    if(onPercent >= offPercent){
+      offTime = minCycleTimeMillis;
+      onTime = (offPercent/onPercent) * minCycleTimeMillis;
+    }else if(offPercent > onPercent){
+      onTime = minCycleTimeMillis;
+      offTime = (onPercent/offPercent) * minCycleTimeMillis;
+    }
+
+    aCountdown.changeTimer(onTime + offTime);
+    aOnCountdown.changeTimer(onTime);
+    aOffCountdown.changeTimer(onTime+offTime);
+
+    /*
+    digitalWrite(debugLED1, HIGH);
+    delay(onTime);
+    digitalWrite(debugLED1, LOW);
+    delay(offTime);
+    */
+  }else if(percent < 0){
+    aCountdown.changeTimer(0);
+    aOnCountdown.changeTimer(0);
+    aOffCountdown.changeTimer(0);
+    
+    onPercent = abs(percent);
+    offPercent = 1 - abs(percent);
+    if(onPercent >= offPercent){
+      offTime = minCycleTimeMillis;
+      onTime = (offPercent/onPercent) * minCycleTimeMillis;
+    }else if(offPercent > onPercent){
+      onTime = minCycleTimeMillis;
+      offTime = (onPercent/offPercent) * minCycleTimeMillis;
+    }
+    bCountdown.changeTimer(onTime + offTime);
+    bOnCountdown.changeTimer(onTime);
+    bOffCountdown.changeTimer(onTime+offTime);
+    /*
+    digitalWrite(debugLED2, HIGH);
+    delay(onTime);
+    digitalWrite(debugLED2, LOW);
+    delay(offTime);
+    */
+  }
+}
+
+void PWMLoop(){
+  if(aOnCountdown.getTimeLeft() > 0){
+    digitalWrite(solenoidAPin, HIGH);
+  }else if(aOffCountdown.getTimeLeft() > 0){
+    digitalWrite(solenoidAPin, LOW);
+  }else if(bOnCountdown.getTimeLeft() > 0){
+    digitalWrite(solenoidBPin, HIGH);
+  }else if(bOffCountdown.getTimeLeft() > 0){
+    digitalWrite(solenoidBPin, LOW);
+  }else{
+    digitalWrite(solenoidAPin, LOW);
+    digitalWrite(solenoidBPin, LOW);
+  }
 }
