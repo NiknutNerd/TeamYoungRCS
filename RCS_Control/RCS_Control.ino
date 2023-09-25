@@ -1,52 +1,43 @@
 #include <math.h>
 #include <Wire.h>
-#include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include <Adafruit_BME680.h>
+#include <utility/imumaths.h>
 
-/*
-#define BME_SCK 13;
-#define BME_MISO 12;
-#define BME_MOSI 11;
-#define BME_CS 10;
+Adafruit_BNO055 bno = Adafruit_BNO055(55);
+sensors_event_t event;
 
-#define SEALEVELPRESSURE_HPA (1013.25)
+const int I2C_DATA = 4;
+const int I2C_CLOCK = 5;
 
-Adafruit_BME680 bme;
-*/
+const int GPS_RESET = 11;
 
-const int I2CDataPin = 0;
-const int I2CClockPin = 1;
+const int UART_TX = 12;
+const int UART_RX = 13;
 
-const int GPSResetPin = 11;
+const int SOLENOID_CW = 18;
+const int SOLENOID_CCW = 19;
 
-const int UARTTXPin = 12;
-const int UARTRXPin = 13;
+//const int SERVO_FEEDBACK = 4;
+//const int SERVO_PWM = 5;
 
-const int solenoidAPin = 2;
-const int solenoidBPin = 3;
+const int REGULATOR_6V = 10;
 
-const int servoFeedbackPin = 4;
-const int servoPWMPin = 5;
+const int POWER_GOOD_6V = 14;
+const int POWER_GOOD_3V = 15;
 
-const int regulator6VPin = 10;
+const int SWITCH_PIN = 16;
 
-const int powerGood6VPin = 14;
-const int powerGood3VPin = 15;
+const int BUZZER_PIN = 17;
 
-const int switchPin = 16;
+const int BRIGHT_LED = 9;
+const int DEBUG_LED_1 = 18;
+const int DEBUG_LED_2 = 19;
+const int DEBUG_LED_3 = 20;
+const int DEBUG_LED_4 = 21;
 
-const int buzzerPin = 17;
-
-const int brightLEDPin = 9;
-const int debugLED1 = 18;
-const int debugLED2 = 19;
-const int debugLED3 = 20;
-const int debugLED4 = 21;
-
-const double minCycleTime = 1.0/20.0;
-const double minCycleTimeMillis = minCycleTime * 1000;
+const double MIN_CYCLE_TIME = 1.0/20.0;
+const double MIN_CYCLE_TIME_MILLIS = MIN_CYCLE_TIME * 1000;
 double onPercent;
 double offPercent;
 long onTime;
@@ -99,6 +90,7 @@ Timer LEDTimer(currentTime);
 Timer bmeTimer(currentTime);
 Timer solenoidTimer(currentTime);
 Timer PWMTimer(currentTime);
+Timer printTimer(currentTime);
 //Timer testTimer(currentTime);
 
 CountdownTimer aCountdown(0);
@@ -123,34 +115,16 @@ void PWMSetup(double percent){
     onPercent = percent;
     offPercent = 1 - percent;
     if(onPercent >= offPercent){
-      offTime = minCycleTimeMillis;
-      onTime = (offPercent/onPercent) * minCycleTimeMillis;
+      offTime = MIN_CYCLE_TIME_MILLIS;
+      onTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
     }else if(offPercent > onPercent){
       //Change to else
-      onTime = minCycleTimeMillis;
-      offTime = (onPercent/offPercent) * minCycleTimeMillis;
+      onTime = MIN_CYCLE_TIME_MILLIS;
+      offTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
     }
-
     aCountdown.changeTimer(onTime + offTime);
     aOnCountdown.changeTimer(onTime);
     aOffCountdown.changeTimer(onTime+offTime);
-
-    Serial.print("A Countdowns: ");
-    Serial.print(aCountdown.getTimeLeft());
-    Serial.print(aOnCountdown.getTimeLeft());
-    Serial.println(aOffCountdown.getTimeLeft());
-
-    Serial.print("B Countdowns: ");
-    Serial.print(bCountdown.getTimeLeft());
-    Serial.print(bOnCountdown.getTimeLeft());
-    Serial.println(bOffCountdown.getTimeLeft());
-
-    /*
-    digitalWrite(debugLED1, HIGH);
-    delay(onTime);
-    digitalWrite(debugLED1, LOW);
-    delay(offTime);
-    */
   }else if(percent < 0){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
@@ -159,30 +133,15 @@ void PWMSetup(double percent){
     onPercent = abs(percent);
     offPercent = 1 - abs(percent);
     if(onPercent >= offPercent){
-      offTime = minCycleTimeMillis;
-      onTime = (offPercent/onPercent) * minCycleTimeMillis;
+      offTime = MIN_CYCLE_TIME_MILLIS;
+      onTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
     }else if(offPercent > onPercent){
-      onTime = minCycleTimeMillis;
-      offTime = (onPercent/offPercent) * minCycleTimeMillis;
+      onTime = MIN_CYCLE_TIME_MILLIS;
+      offTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
     }
     bCountdown.changeTimer(onTime + offTime);
     bOnCountdown.changeTimer(onTime);
     bOffCountdown.changeTimer(onTime+offTime);
-    /*
-    digitalWrite(debugLED2, HIGH);
-    delay(onTime);
-    digitalWrite(debugLED2, LOW);
-    delay(offTime);
-    */
-    Serial.print("A Countdowns: ");
-    Serial.print(aCountdown.getTimeLeft());
-    Serial.print(aOnCountdown.getTimeLeft());
-    Serial.println(aOffCountdown.getTimeLeft());
-
-    Serial.print("B Countdowns: ");
-    Serial.print(bCountdown.getTimeLeft());
-    Serial.print(bOnCountdown.getTimeLeft());
-    Serial.println(bOffCountdown.getTimeLeft());
   }else if(percent == 0){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
@@ -195,86 +154,111 @@ void PWMSetup(double percent){
 }
 void PWMLoop(){
   if(aOnCountdown.getTimeLeft() > 0){
-    digitalWrite(solenoidAPin, HIGH);
+    digitalWrite(SOLENOID_CW, HIGH);
   }else if(aOffCountdown.getTimeLeft() > 0){
-    digitalWrite(solenoidAPin, LOW);
+    digitalWrite(SOLENOID_CW, LOW);
   }else if(bOnCountdown.getTimeLeft() > 0){
-    digitalWrite(solenoidBPin, HIGH);
+    digitalWrite(SOLENOID_CCW, HIGH);
   }else if(bOffCountdown.getTimeLeft() > 0){
-    digitalWrite(solenoidBPin, LOW);
+    digitalWrite(SOLENOID_CCW, LOW);
   }else{
-    digitalWrite(solenoidAPin, LOW);
-    digitalWrite(solenoidBPin, LOW);
+    digitalWrite(SOLENOID_CW, LOW);
+    digitalWrite(SOLENOID_CCW, LOW);
   }
 }
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
+  Serial.println("Control Program Starting");
 
-  //BME Stuff
-  /*
-  while(!Serial);
-  if(!bme.begin()){
-    Serial.println(F("Can't find BME"));
-    while(1);
+  //IMU Setup
+  if(!bno.begin()){
+    Serial.println("No IMU Detected");
+    delay(5000);
   }
-  bme.setTemperatureOversampling(BME680_OS_8X);
-  bme.setHumidityOversampling(BME680_OS_2x);
-  bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  bme.setGasHeater(320, 150);
-  */
+  //Makes IMU more accurate
+  bno.setExtCrystalUse(true);
 
-  pinMode(brightLEDPin, OUTPUT);
-  pinMode(debugLED1, OUTPUT);
-  pinMode(debugLED2, OUTPUT);
-  pinMode(debugLED3, OUTPUT);
-  pinMode(debugLED4, OUTPUT);
+  //Define all pin modes
+  pinMode(BRIGHT_LED, OUTPUT);
+  pinMode(DEBUG_LED_1, OUTPUT);
+  pinMode(DEBUG_LED_2, OUTPUT);
+  pinMode(DEBUG_LED_3, OUTPUT);
+  pinMode(DEBUG_LED_4, OUTPUT);
 
-  pinMode(solenoidAPin, OUTPUT);
-  pinMode(solenoidBPin, OUTPUT);
+  pinMode(SOLENOID_CW, OUTPUT);
+  pinMode(SOLENOID_CCW, OUTPUT);
 
-  pinMode(switchPin, INPUT);
+  pinMode(SWITCH_PIN, INPUT);
 
+  //Create Timers
   currentTime = millis();
   LEDTimer.resetTime();
   bmeTimer.resetTime();
   solenoidTimer.resetTime();
   PWMTimer.resetTime();
+  printTimer.resetTime();
   //testTimer.resetTime();
   testCountdown.changeTimer(5000);
   Serial.println(testCountdown.getTimeLeft());
   loops = 0;
 }
 
+//Functions Here
+void limitedPrint(long frequency){
+  if(printTimer.getTime() > frequency){
+    Serial.println("Telemetry: ");
+    Serial.print("A Countdowns: ");
+    Serial.print(aCountdown.getTimeLeft());
+    Serial.print(aOnCountdown.getTimeLeft());
+    Serial.println(aOffCountdown.getTimeLeft());
+
+    Serial.print("B Countdowns: ");
+    Serial.print(bCountdown.getTimeLeft());
+    Serial.print(bOnCountdown.getTimeLeft());
+    Serial.println(bOffCountdown.getTimeLeft());
+    Serial.println("");
+
+    Serial.print("IMU X: ");
+    Serial.println(event.orientation.x);
+    Serial.print("IMU Y: ");
+    Serial.println(event.orientation.y);
+    Serial.print("IMU Z: ");
+    Serial.println(event.orientation.z);
+    Serial.println("");
+
+    Serial.print("Color: ");
+    Serial.println(color);
+    Serial.println("");
+
+    Serial.print("Switch State: ");
+    Serial.println(switchState);
+    Serial.println("");
+
+    printTimer.resetTime();
+  }
+}
+
 void loop() {
   // put your main code here, to run repeatedly:
+  limitedPrint(500);
+
+  //IMU Loop Setup
+  //sensors_event_t event;
+  bno.getEvent(&event);
+
   currentTime = millis(); 
   String lastColor = color;
   loops++;
-  switchState = digitalRead(switchPin);
+  switchState = digitalRead(SWITCH_PIN);
   if(switchState == HIGH && switchState != lastSwitchState){
     LEDTimer.resetTime();
   }
-  if(false){
-    if(testCountdown.getTimeLeft() > 0){
-      digitalWrite(debugLED3, HIGH);
-      Serial.print("LED On, Time Left: ");
-      Serial.println(testCountdown.getTimeLeft());
-    }else if (testCountdown.getTimeLeft() <= 0){
-      digitalWrite(debugLED3, LOW);
-      Serial.print("LED Off, Time Left: ");
-      Serial.println(testCountdown.getTimeLeft());
-      testCountdown.changeTimer(5000);
-    }
-  }
+
+  //5 second PWM 2 solenoid / LED test
   if(true){
-    Serial.print(aCountdown.getTimeLeft());
-    Serial.println(bCountdown.getTimeLeft());
     if(solenoidTimer.getTime() < 1000){
       if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
-        Serial.println("thing");
         PWMSetup(.75);
       }
     }else if(solenoidTimer.getTime() < 2000){
@@ -298,93 +282,39 @@ void loop() {
     }
     PWMLoop();
   }
+
+  //LED Cycler
   if(false){
     if(LEDTimer.getTime() < 1000){
-      digitalWrite(debugLED1, HIGH);
+      digitalWrite(DEBUG_LED_1, HIGH);
       color = "Red";
     }else if(LEDTimer.getTime() < 2000){
-      digitalWrite(debugLED1, LOW);
-      digitalWrite(debugLED2, HIGH);
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, HIGH);
       color = "Green";
     }else if(LEDTimer.getTime() < 3000){
-      digitalWrite(debugLED2, LOW);
-      digitalWrite(debugLED3, HIGH);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, HIGH);
       color = "Blue";
     }else if(LEDTimer.getTime() < 4000){
-      digitalWrite(debugLED3, LOW);
-      digitalWrite(debugLED4, HIGH);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(DEBUG_LED_4, HIGH);
       color = "White";
     }else{
-      digitalWrite(debugLED1, LOW);
-      digitalWrite(debugLED2, LOW);
-      digitalWrite(debugLED3, LOW);
-      digitalWrite(debugLED4, LOW);
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(DEBUG_LED_4, LOW);
       color = "\n";
       LEDTimer.resetTime();
     } 
   }else{
-    digitalWrite(debugLED1, LOW);
-      digitalWrite(debugLED2, LOW);
-      digitalWrite(debugLED3, LOW);
-      digitalWrite(debugLED4, LOW);
+    digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(DEBUG_LED_4, LOW);
       color = "\n";
   }
-  
-  if(!color.equals(lastColor)){
-    //Serial.print(loops);
-    loops = 0;
-    Serial.print(color);
-    //Serial.print(switchState);
-    //Serial.print(solenoidState);
-  }
-  //Serial.print(switchState);
-  if(switchState != lastSwitchState){
-    Serial.print(switchState);
-  } 
+
   lastSwitchState = switchState;
-
-  if(false){
-    if(solenoidTimer.getTime() < 50){
-      digitalWrite(solenoidAPin, HIGH);
-      digitalWrite(solenoidBPin, LOW);
-      solenoidState = 0;
-    }else if(solenoidTimer.getTime() < 100){
-      digitalWrite(solenoidAPin, LOW);
-      digitalWrite(solenoidBPin, HIGH);
-      solenoidState = 1;
-    }
-    /*
-    else if(solenoidTimer.getTime() < 150){
-      digitalWrite(solenoidBPin, HIGH);
-      digitalWrite(solenoidAPin, LOW);
-      solenoidState = 2;
-    }
-    */
-    else{
-      solenoidTimer.resetTime();
-    }
-  }
-
-  //BME Stuff
-  /*
-  if(! bme.performReading()){
-    Serial.println("Reading Failed");
-    return;
-  }
-  if(bmeTimer.getTime() > 1000){
-    Serial.print("Temperature: ");
-    Serial.println(bme.temperature);
-    Serial.print("Pressure: ");
-    Serial.println(bme.pressure / 100.0);
-    Serial.print("Humidity: ");
-    Serial.println(bme.humidity);
-    Serial.print("Gas: ");
-    Serial.println(bme.gas_resistance / 1000.0);
-    Serial.print("Approx. Altitude");
-    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    Serial.println(" m");
-    Serial.println();
-    bmeTimer.resetTime();
-  }
-  */
 }
