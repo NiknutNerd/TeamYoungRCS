@@ -31,8 +31,8 @@ const int SWITCH_PIN = 16;
 const int BUZZER_PIN = 17;
 
 const int BRIGHT_LED = 9;
-const int DEBUG_LED_1 = 18;
-const int DEBUG_LED_2 = 19;
+const int DEBUG_LED_1 = 2;
+const int DEBUG_LED_2 = 3;
 const int DEBUG_LED_3 = 20;
 const int DEBUG_LED_4 = 21;
 
@@ -42,6 +42,10 @@ double onPercent;
 double offPercent;
 long onTime;
 long offTime;
+
+double targetX;
+double currentX;
+double errorX;
 
 long currentTime = millis();
 int loops;
@@ -116,11 +120,11 @@ void PWMSetup(double percent){
     offPercent = 1 - percent;
     if(onPercent >= offPercent){
       offTime = MIN_CYCLE_TIME_MILLIS;
-      onTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
+      onTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
     }else if(offPercent > onPercent){
       //Change to else
       onTime = MIN_CYCLE_TIME_MILLIS;
-      offTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
+      offTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
     }
     aCountdown.changeTimer(onTime + offTime);
     aOnCountdown.changeTimer(onTime);
@@ -134,10 +138,10 @@ void PWMSetup(double percent){
     offPercent = 1 - abs(percent);
     if(onPercent >= offPercent){
       offTime = MIN_CYCLE_TIME_MILLIS;
-      onTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
+      onTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
     }else if(offPercent > onPercent){
       onTime = MIN_CYCLE_TIME_MILLIS;
-      offTime = (onPercent/offPercent) * MIN_CYCLE_TIME_MILLIS;
+      offTime = (offPercent/onPercent) * MIN_CYCLE_TIME_MILLIS;
     }
     bCountdown.changeTimer(onTime + offTime);
     bOnCountdown.changeTimer(onTime);
@@ -172,12 +176,14 @@ void setup() {
   Serial.println("Control Program Starting");
 
   //IMU Setup
+  
   if(!bno.begin()){
     Serial.println("No IMU Detected");
     delay(5000);
   }
   //Makes IMU more accurate
   bno.setExtCrystalUse(true);
+  
 
   //Define all pin modes
   pinMode(BRIGHT_LED, OUTPUT);
@@ -217,7 +223,12 @@ void limitedPrint(long frequency){
     Serial.print(bCountdown.getTimeLeft());
     Serial.print(bOnCountdown.getTimeLeft());
     Serial.println(bOffCountdown.getTimeLeft());
-    Serial.println("");
+    
+    Serial.print("Color: ");
+    Serial.println(color);
+
+    Serial.print("Switch State: ");
+    Serial.println(switchState);
 
     Serial.print("IMU X: ");
     Serial.println(event.orientation.x);
@@ -225,14 +236,6 @@ void limitedPrint(long frequency){
     Serial.println(event.orientation.y);
     Serial.print("IMU Z: ");
     Serial.println(event.orientation.z);
-    Serial.println("");
-
-    Serial.print("Color: ");
-    Serial.println(color);
-    Serial.println("");
-
-    Serial.print("Switch State: ");
-    Serial.println(switchState);
     Serial.println("");
 
     printTimer.resetTime();
@@ -256,7 +259,7 @@ void loop() {
   }
 
   //5 second PWM 2 solenoid / LED test
-  if(true){
+  if(false){
     if(solenoidTimer.getTime() < 1000){
       if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
         PWMSetup(.75);
@@ -313,7 +316,37 @@ void loop() {
       digitalWrite(DEBUG_LED_2, LOW);
       digitalWrite(DEBUG_LED_3, LOW);
       digitalWrite(DEBUG_LED_4, LOW);
-      color = "\n";
+      color = "";
+  }
+
+  if(true){
+    
+    if(event.orientation.x > 45 && event.orientation.x < 315){
+      digitalWrite(DEBUG_LED_1, HIGH);
+    }else{
+      digitalWrite(DEBUG_LED_1, LOW);
+    }
+    if(event.orientation.y > 15 || event.orientation.y < -15){
+      digitalWrite(DEBUG_LED_2, HIGH);
+    }else{
+      digitalWrite(DEBUG_LED_2, LOW);
+    }
+    if(event.orientation.z > 15 || event.orientation.z < -15){
+      digitalWrite(DEBUG_LED_3, HIGH);
+    }else{
+      digitalWrite(DEBUG_LED_3, LOW);
+    }
+    
+  }
+
+  if(false){
+    
+    currentX = event.orientation.x;
+    targetX = 180;
+    errorX = targetX - currentX;
+    double inputError = errorX * (1.0/180.0);
+    PWMSetup(inputError);
+    PWMLoop();
   }
 
   lastSwitchState = switchState;
