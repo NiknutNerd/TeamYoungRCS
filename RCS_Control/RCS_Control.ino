@@ -344,8 +344,8 @@ void loop() {
     currentX = event.orientation.x;
     targetX = 180;
     errorX = targetX - currentX;
-    double inputError = errorX * (1.0/180.0);
-    PWMSetup(inputError);
+    double inputPower = errorX * (1.0/180.0);
+    PWMSetup(inputPower);
     PWMLoop();
   }
 
