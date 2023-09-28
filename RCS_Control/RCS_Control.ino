@@ -15,8 +15,8 @@ const int GPS_RESET = 11;
 const int UART_TX = 12;
 const int UART_RX = 13;
 
-const int SOLENOID_CW = 18;
-const int SOLENOID_CCW = 19;
+const int SOLENOID_CW = 2;
+const int SOLENOID_CCW = 3;
 
 //const int SERVO_FEEDBACK = 4;
 //const int SERVO_PWM = 5;
@@ -31,8 +31,8 @@ const int SWITCH_PIN = 16;
 const int BUZZER_PIN = 17;
 
 const int BRIGHT_LED = 9;
-const int DEBUG_LED_1 = 2;
-const int DEBUG_LED_2 = 3;
+const int DEBUG_LED_1 = 18;
+const int DEBUG_LED_2 = 19;
 const int DEBUG_LED_3 = 20;
 const int DEBUG_LED_4 = 21;
 
@@ -95,6 +95,7 @@ Timer bmeTimer(currentTime);
 Timer solenoidTimer(currentTime);
 Timer PWMTimer(currentTime);
 Timer printTimer(currentTime);
+Timer sensorSetup(currentTime);
 //Timer testTimer(currentTime);
 
 CountdownTimer aCountdown(0);
@@ -173,14 +174,48 @@ void PWMLoop(){
 
 void setup() {
   Serial.begin(9600);
+  while(!Serial){
+  }
   Serial.println("Control Program Starting");
 
-  //IMU Setup
+  //Create Timers
+  currentTime = millis();
+  LEDTimer.resetTime();
+  bmeTimer.resetTime();
+  solenoidTimer.resetTime();
+  PWMTimer.resetTime();
+  printTimer.resetTime();
+  sensorSetup.resetTime();
+  //testTimer.resetTime();
+  testCountdown.changeTimer(5000);
+  //Serial.println(testCountdown.getTimeLeft());
+  loops = 0;
+
   
+  Serial.println("Starting Sensors");
+  Serial.println(sensorSetup.getTime());
+  //bno.begin();
+  while(sensorSetup.getTime() < 5000){
+    digitalWrite(DEBUG_LED_3, HIGH);
+    if(printTimer.getTime() > 500){
+      Serial.print("Trying to start sensors");
+      Serial.print(sensorSetup.getTime());
+    }
+  }
+  digitalWrite(DEBUG_LED_3, LOW);
+  //IMU Setup
+  Serial.println("");
+  Serial.println("Setup Timer Complete");
   if(!bno.begin()){
     Serial.println("No IMU Detected");
-    delay(5000);
+    while(1){
+    }
   }
+  Serial.println("Past BNO Begin Check");
+
+  uint8_t system, gyro, accel, mag = 0;
+  
+  
   //Makes IMU more accurate
   bno.setExtCrystalUse(true);
   
@@ -195,19 +230,21 @@ void setup() {
   pinMode(SOLENOID_CW, OUTPUT);
   pinMode(SOLENOID_CCW, OUTPUT);
 
-  pinMode(SWITCH_PIN, INPUT);
+  pinMode(SWITCH_PIN, INPUT);  
 
-  //Create Timers
-  currentTime = millis();
+  while(gyro < 3 && mag < 3){
+    bno.getCalibration(&system, &gyro, &accel, &mag);
+    if(LEDTimer.getTime() < 250){
+      digitalWrite(DEBUG_LED_4, HIGH);
+    }else if(LEDTimer.getTime() < 250){
+      digitalWrite(DEBUG_LED_4, LOW);
+    }else{
+      digitalWrite(DEBUG_LED_4, LOW);
+      LEDTimer.resetTime();
+    }
+  }
+  digitalWrite(DEBUG_LED_4, LOW);
   LEDTimer.resetTime();
-  bmeTimer.resetTime();
-  solenoidTimer.resetTime();
-  PWMTimer.resetTime();
-  printTimer.resetTime();
-  //testTimer.resetTime();
-  testCountdown.changeTimer(5000);
-  Serial.println(testCountdown.getTimeLeft());
-  loops = 0;
 }
 
 //Functions Here
