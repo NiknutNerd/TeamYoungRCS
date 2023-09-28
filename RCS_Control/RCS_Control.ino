@@ -2,9 +2,13 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
+#include <Adafruit_BME680.h>
 #include <utility/imumaths.h>
 
+#define SEALEVELPRESSURE_HPA (1013.25)
+
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
+Adafruit_BME680 bme;
 sensors_event_t event;
 
 const int I2C_DATA = 4;
@@ -47,7 +51,7 @@ double targetX;
 double currentX;
 double errorX;
 
-long currentTime = millis();
+//long currentTime = millis();
 int loops;
 
 class Timer{
@@ -55,15 +59,15 @@ class Timer{
     long startTime;
     long timeSinceStart;
   public:
-    Timer(long initTime){
-      startTime = initTime;
+    Timer(){
+      startTime = (long)millis();
     }
     long getTime(){
-      long timeSinceStart = currentTime - startTime;
+      long timeSinceStart = (long)millis() - startTime;
       return timeSinceStart;
     }
     void resetTime(){
-      startTime = currentTime;
+      startTime = (long)millis();
       timeSinceStart = 0;
     }
 };
@@ -75,10 +79,10 @@ class CountdownTimer{
   public:
     CountdownTimer(long time){
       initialTime = time;
-      targetTime = currentTime + time; 
+      targetTime = (long)millis() + time; 
     }
     long getTimeLeft(){
-      long timeLeft = targetTime - currentTime;
+      long timeLeft = targetTime - (long)millis();
       if(timeLeft < 0){
         timeLeft = -1;
       }
@@ -86,17 +90,17 @@ class CountdownTimer{
     }
     void changeTimer(long newTime){
       initialTime = newTime;
-      targetTime = currentTime + newTime;
+      targetTime = (long)millis() + newTime;
     }
 };
 
-Timer LEDTimer(currentTime);
-Timer bmeTimer(currentTime);
-Timer solenoidTimer(currentTime);
-Timer PWMTimer(currentTime);
-Timer printTimer(currentTime);
-Timer sensorSetup(currentTime);
-//Timer testTimer(currentTime);
+Timer LEDTimer;
+Timer bmeTimer;
+Timer solenoidTimer;
+Timer PWMTimer;
+Timer printTimer;
+Timer sensorSetup;
+//Timer testTimer;
 
 CountdownTimer aCountdown(0);
 CountdownTimer bCountdown(0);
@@ -179,7 +183,6 @@ void setup() {
   Serial.println("Control Program Starting");
 
   //Create Timers
-  currentTime = millis();
   LEDTimer.resetTime();
   bmeTimer.resetTime();
   solenoidTimer.resetTime();
@@ -194,30 +197,49 @@ void setup() {
   
   Serial.println("Starting Sensors");
   Serial.println(sensorSetup.getTime());
-  //bno.begin();
+  Serial.println(sensorSetup.getTime() < 5000);
+
   while(sensorSetup.getTime() < 5000){
     digitalWrite(DEBUG_LED_3, HIGH);
+    if(bno.begin() && bme.begin()){
+      break;
+    }
     if(printTimer.getTime() > 500){
       Serial.print("Trying to start sensors");
       Serial.print(sensorSetup.getTime());
     }
   }
+  printTimer.resetTime();
   digitalWrite(DEBUG_LED_3, LOW);
   //IMU Setup
   Serial.println("");
   Serial.println("Setup Timer Complete");
-  if(!bno.begin()){
-    Serial.println("No IMU Detected");
+  if(!bno.begin() || !bme.begin()){
+    Serial.println("No IMU or BME Detected");
     while(1){
+      if(LEDTimer.getTime() < 500){
+        digitalWrite(DEBUG_LED_3, HIGH);
+        digitalWrite(DEBUG_LED_4, LOW);
+      }else if(LEDTimer.getTime() < 1000){
+        digitalWrite(DEBUG_LED_3, LOW);
+        digitalWrite(DEBUG_LED_4, HIGH);
+      }else{
+        LEDTimer.resetTime();
+      }
     }
   }
   Serial.println("Past BNO Begin Check");
 
+  //IMU Stuff
   uint8_t system, gyro, accel, mag = 0;
-  
-  
-  //Makes IMU more accurate
   bno.setExtCrystalUse(true);
+
+  //BME Stuff
+  bme.setTemperatureOversampling(BME680_OS_8X);
+  bme.setHumidityOversampling(BME680_OS_2X);
+  bme.setPressureOversampling(BME680_OS_4X);
+  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+  bme.setGasHeater(320,150);
   
 
   //Define all pin modes
@@ -267,6 +289,23 @@ void limitedPrint(long frequency){
     Serial.print("Switch State: ");
     Serial.println(switchState);
 
+    Serial.print("Temperature = ");
+    Serial.print(bme.temperature);
+    Serial.println(" *C");
+    Serial.print("Pressure = ");
+    Serial.print(bme.pressure / 100.0);
+    Serial.println(" hPa");
+    Serial.print("Humidity = ");
+    Serial.print(bme.humidity);
+    Serial.println(" %");
+    Serial.print("Gas = ");
+    Serial.print(bme.gas_resistance / 1000.0);
+    Serial.println(" KOhms");
+    Serial.print("Approximate Altitude = ");
+    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    Serial.println(" m");
+    Serial.println("");
+
     Serial.print("IMU X: ");
     Serial.println(event.orientation.x);
     Serial.print("IMU Y: ");
@@ -287,7 +326,6 @@ void loop() {
   //sensors_event_t event;
   bno.getEvent(&event);
 
-  currentTime = millis(); 
   String lastColor = color;
   loops++;
   switchState = digitalRead(SWITCH_PIN);
