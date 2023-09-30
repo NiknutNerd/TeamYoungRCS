@@ -204,7 +204,8 @@ void setup() {
   Serial.println("Starting Sensors");
   Serial.println(sensorSetup.getTime());
   Serial.println(sensorSetup.getTime() < 5000);
-
+  
+  /*
   while(sensorSetup.getTime() < 5000){
     digitalWrite(DEBUG_LED_3, HIGH);
     if(bno.begin() && bme.begin()){
@@ -215,11 +216,13 @@ void setup() {
       Serial.print(sensorSetup.getTime());
     }
   }
+  */
   printTimer.resetTime();
   digitalWrite(DEBUG_LED_3, LOW);
   //IMU Setup
   Serial.println("");
   Serial.println("Setup Timer Complete");
+  /*
   if(!bno.begin() || !bme.begin()){
     Serial.println("No IMU or BME Detected");
     while(1){
@@ -234,9 +237,11 @@ void setup() {
       }
     }
   }
+  */
   Serial.println("Past BNO Begin Check");
 
   //IMU Stuff
+  /*
   uint8_t system, gyro, accel, mag = 0;
   bno.setExtCrystalUse(true);
 
@@ -246,6 +251,7 @@ void setup() {
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320,150);
+  */
   
 
   //Define all pin modes
@@ -260,6 +266,7 @@ void setup() {
 
   pinMode(SWITCH_PIN, INPUT);  
 
+  /*
   while(gyro < 3 && mag < 3){
     bno.getCalibration(&system, &gyro, &accel, &mag);
     if(LEDTimer.getTime() < 250){
@@ -272,6 +279,7 @@ void setup() {
     }
   }
   digitalWrite(DEBUG_LED_4, LOW);
+  */
   LEDTimer.resetTime();
 }
 String missionTime(long milliseconds){
@@ -319,6 +327,7 @@ void limitedPrint(long frequency){
     Serial.print("Switch State: ");
     Serial.println(switchState);
 
+    /*
     Serial.print("Temperature = ");
     Serial.print(bme.temperature);
     Serial.println(" *C");
@@ -343,6 +352,7 @@ void limitedPrint(long frequency){
     Serial.print("IMU Z: ");
     Serial.println(event.orientation.z);
     Serial.println("");
+    */
 
     printTimer.resetTime();
   }
@@ -351,10 +361,11 @@ void limitedPrint(long frequency){
 void loop() {
   // put your main code here, to run repeatedly:
   limitedPrint(500);
+  telemetry(250);
 
   //IMU Loop Setup
   //sensors_event_t event;
-  bno.getEvent(&event);
+  //bno.getEvent(&event);
 
   String lastColor = color;
   loops++;
@@ -425,7 +436,7 @@ void loop() {
   }
 
   if(true){
-    
+    /*
     if(event.orientation.x > 45 && event.orientation.x < 315){
       digitalWrite(DEBUG_LED_1, HIGH);
     }else{
@@ -441,17 +452,18 @@ void loop() {
     }else{
       digitalWrite(DEBUG_LED_3, LOW);
     }
-    
+    */
   }
 
   if(false){
-    
+    /*
     currentX = event.orientation.x;
     targetX = 180;
     errorX = targetX - currentX;
     double inputPower = errorX * (1.0/180.0);
     PWMSetup(inputPower);
     PWMLoop();
+    */
   }
 
   lastSwitchState = switchState;
