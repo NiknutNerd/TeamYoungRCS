@@ -34,7 +34,7 @@ const int SOLENOID_CCW = 21;
 const double MIN_CYCLE = 1.0/20.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
-double offPercent
+double offPercent;
 long onTime;
 long offTime;
 
@@ -85,6 +85,7 @@ class CountdownTimer{
 Timer sensorSetup;
 Timer printTimer;
 Timer solenoidTimer;
+Timer LEDTimer;
 
 CountdownTimer aCountdown(0);
 CountdownTimer bCountdown(0);
@@ -160,21 +161,182 @@ void setup() {
   }
   Serial.println("Control Program Starting");
 
-  printTimer.resetTime();
-  sensorSetup.resetTime();
-  solenoidTimer.resetTime();
-
   Serial.println("Starting Sensors");
 
+  pinMode(BRIGHT_LED, OUTPUT);
+  pinMode(DEBUG_LED_1, OUTPUT);
+  pinMode(DEBUG_LED_2, OUTPUT);
+  pinMode(DEBUG_LED_3, OUTPUT);
+  pinMode(SOLENOID_CW, OUTPUT);
+  pinMode(SOLENOID_CCW, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT);
+
   while(sensorSetup.getTime() < 5000){
-    
+    digitalWrite(DEBUG_LED_1, HIGH);
     if(bno.begin() && bme.begin()){
       break;
     }
   }
+  
+  sensorSetup.resetTime();
+  digitalWrite(DEBUG_LED_1, LOW);
+  if(!bno.begin() || !bme.begin()){
+    Serial.println("No IMU or BME Detected");
+    while(1){
+      if(LEDTimer.getTime() < 250){
+        digitalWrite(DEBUG_LED_1, HIGH);
+        digitalWrite(DEBUG_LED_2, LOW);
+        digitalWrite(DEBUG_LED_3, LOW);
+        digitalWrite(BRIGHT_LED, LOW);
+      }else if(LEDTimer.getTime() < 500){
+        digitalWrite(DEBUG_LED_1, LOW);
+        digitalWrite(DEBUG_LED_2, HIGH);
+        digitalWrite(DEBUG_LED_3, LOW);
+        digitalWrite(BRIGHT_LED, LOW);
+      }else if(LEDTimer.getTime() < 750){
+        digitalWrite(DEBUG_LED_1, LOW);
+        digitalWrite(DEBUG_LED_2, LOW);
+        digitalWrite(DEBUG_LED_3, HIGH);
+        digitalWrite(BRIGHT_LED, LOW);
+      }else if(LEDTimer.getTime() < 1000){
+        digitalWrite(DEBUG_LED_1, LOW);
+        digitalWrite(DEBUG_LED_2, LOW);
+        digitalWrite(DEBUG_LED_3, LOW);
+        digitalWrite(BRIGHT_LED, HIGH);
+      }else{
+        LEDTimer.resetTime();
+      }
+    }
+  }
+
+  uint8_t system, gyro, accel, mag = 0;
+  bno.setExtCrystalUse(true);
+
+  //BME Stuff
+  bme.setTemperatureOversampling(BME680_OS_8X);
+  bme.setHumidityOversampling(BME680_OS_2X);
+  bme.setPressureOversampling(BME680_OS_4X);
+  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+  bme.setGasHeater(320,150);
+
+  digitalWrite(SENSOR_RESET, HIGH);
+  
+  while(gyro < 3 && mag < 3){
+    bno.getCalibration(&system, &gyro, &accel, &mag);
+    digitalWrite(DEBUG_LED_2, HIGH);
+  }
+  digitalWrite(DEBUG_LED_2, LOW);
+
+  printTimer.resetTime();
+  sensorSetup.resetTime();
+  solenoidTimer.resetTime();
+  LEDTimer.resetTime();
+}
+
+void limitedPrint(long frequency){
+  if(printTimer.getTime() > frequency){
+    Serial.println("Telemetry: ");
+    Serial.print("A Countdowns: ");
+    Serial.print(aCountdown.getTimeLeft());
+    Serial.print(aOnCountdown.getTimeLeft());
+    Serial.println(aOffCountdown.getTimeLeft());
+
+    Serial.print("B Countdowns: ");
+    Serial.print(bCountdown.getTimeLeft());
+    Serial.print(bOnCountdown.getTimeLeft());
+    Serial.println(bOffCountdown.getTimeLeft());
+
+    Serial.print("Temperature = ");
+    Serial.print(bme.temperature);
+    Serial.println(" *C");
+    Serial.print("Pressure = ");
+    Serial.print(bme.pressure / 100.0);
+    Serial.println(" hPa");
+    Serial.print("Humidity = ");
+    Serial.print(bme.humidity);
+    Serial.println(" %");
+    Serial.print("Gas = ");
+    Serial.print(bme.gas_resistance / 1000.0);
+    Serial.println(" KOhms");
+    Serial.print("Approximate Altitude = ");
+    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    Serial.println(" m");
+    Serial.println("");
+
+    Serial.print("IMU X: ");
+    Serial.println(event.orientation.x);
+    Serial.print("IMU Y: ");
+    Serial.println(event.orientation.y);
+    Serial.print("IMU Z: ");
+    Serial.println(event.orientation.z);
+    Serial.println("");
+
+    printTimer.resetTime();
+  }
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  limitedPrint(1000);
+  bno.getEvent(&event);
 
+  if(true){
+    if(LEDTimer.getTime() < 250){
+      digitalWrite(DEBUG_LED_1, HIGH);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(BRIGHT_LED, LOW);
+    }else if(LEDTimer.getTime() < 500){
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, HIGH);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(BRIGHT_LED, LOW);
+    }else if(LEDTimer.getTime() < 750){
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, HIGH);
+      digitalWrite(BRIGHT_LED, LOW);
+    }else if(LEDTimer.getTime() < 500){
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(DEBUG_LED_3, LOW);
+      digitalWrite(BRIGHT_LED, HIGH);
+    }else{
+      LEDTimer.resetTime();
+    }
+  }
+  if(false){
+    if(solenoidTimer.getTime() < 1000){
+      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
+        PWMSetup(.75);
+      }
+    }else if(solenoidTimer.getTime() < 2000){
+      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
+        PWMSetup(.5);
+      }
+    }else if(solenoidTimer.getTime() < 3000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(-.75);
+      }
+    }else if(solenoidTimer.getTime() < 4000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(-.5);
+      }
+    }else if(solenoidTimer.getTime() < 5000){
+      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
+        PWMSetup(0.0);
+      }
+    }else{
+      solenoidTimer.resetTime();
+    }
+    PWMLoop();
+  }
+
+  if(false){
+    currentX = event.orientation.x;
+    targetX = 180;
+    errorX = targetX - currentX;
+    double inputPower = errorX * (1.0/180.0);
+    PWMSetup(inputPower);
+    PWMLoop();
+  }
 }
