@@ -31,7 +31,7 @@ const int SERVO_CONTROL = 17;
 const int SOLENOID_CW = 20;
 const int SOLENOID_CCW = 21;
 
-const double MIN_CYCLE = 1.0/20.0;
+const double MIN_CYCLE = 1.0/5.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
 double offPercent;
@@ -263,11 +263,28 @@ void limitedPrint(long frequency){
     Serial.println(" m");
     Serial.println("");
 
-    Serial.print("IMU X: ");
+    Serial.print("Gyro: ");
+    Serial.print(" X:");
+    Serial.print(event.gyro.x);
+    Serial.print(" Y: ");
+    Serial.print(event.gyro.y)l
+    Serial.print(" Z: ");
+    Serial.println(event.gyro.z);
+
+    Serial.print("Accel: ");
+    Serial.print(" X: ");
+    Serial.print(event.acceleration.x);
+    Serial.print(" Y: ");
+    Serial.print(event.acceleration.y);
+    Serial.print(" Z: ");
+    Serial.println(event.acceleration.z);
+
+    Serial.println("Orientation: ");
+    Serial.print("X: ");
     Serial.println(event.orientation.x);
-    Serial.print("IMU Y: ");
+    Serial.print("Y: ");
     Serial.println(event.orientation.y);
-    Serial.print("IMU Z: ");
+    Serial.print("Z: ");
     Serial.println(event.orientation.z);
     Serial.println("");
 
@@ -279,7 +296,7 @@ void loop() {
   limitedPrint(1000);
   bno.getEvent(&event);
 
-  if(true){
+  if(false){
     if(LEDTimer.getTime() < 250){
       digitalWrite(DEBUG_LED_1, HIGH);
       digitalWrite(DEBUG_LED_2, LOW);
@@ -295,7 +312,7 @@ void loop() {
       digitalWrite(DEBUG_LED_2, LOW);
       digitalWrite(DEBUG_LED_3, HIGH);
       digitalWrite(BRIGHT_LED, LOW);
-    }else if(LEDTimer.getTime() < 500){
+    }else if(LEDTimer.getTime() < 1000){
       digitalWrite(DEBUG_LED_1, LOW);
       digitalWrite(DEBUG_LED_2, LOW);
       digitalWrite(DEBUG_LED_3, LOW);
@@ -305,23 +322,23 @@ void loop() {
     }
   }
   if(false){
-    if(solenoidTimer.getTime() < 1000){
+    if(solenoidTimer.getTime() < 2000){
       if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
         PWMSetup(.75);
       }
-    }else if(solenoidTimer.getTime() < 2000){
+    }else if(solenoidTimer.getTime() < 4000){
       if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
         PWMSetup(.5);
       }
-    }else if(solenoidTimer.getTime() < 3000){
+    }else if(solenoidTimer.getTime() < 6000){
       if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
         PWMSetup(-.75);
       }
-    }else if(solenoidTimer.getTime() < 4000){
+    }else if(solenoidTimer.getTime() < 8000){
       if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
         PWMSetup(-.5);
       }
-    }else if(solenoidTimer.getTime() < 5000){
+    }else if(solenoidTimer.getTime() < 10000){
       if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
         PWMSetup(0.0);
       }
@@ -336,7 +353,9 @@ void loop() {
     targetX = 180;
     errorX = targetX - currentX;
     double inputPower = errorX * (1.0/180.0);
-    PWMSetup(inputPower);
+    if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
+      PWMSetup(inputPower);
+    }
     PWMLoop();
   }
 }
