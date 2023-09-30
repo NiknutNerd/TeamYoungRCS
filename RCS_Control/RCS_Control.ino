@@ -16,8 +16,8 @@ const int I2C_CLOCK = 5;
 
 const int GPS_RESET = 11;
 
-const int UART_TX = 12;
-const int UART_RX = 13;
+const int UART_TX = 0;
+const int UART_RX = 1;
 
 const int SOLENOID_CW = 2;
 const int SOLENOID_CCW = 3;
@@ -50,6 +50,7 @@ long offTime;
 double targetX;
 double currentX;
 double errorX;
+
 
 //long currentTime = millis();
 int loops;
@@ -100,6 +101,7 @@ Timer solenoidTimer;
 Timer PWMTimer;
 Timer printTimer;
 Timer sensorSetup;
+Timer telemTimer;
 //Timer testTimer;
 
 CountdownTimer aCountdown(0);
@@ -177,6 +179,9 @@ void PWMLoop(){
 }
 
 void setup() {
+  Serial1.setRX(UART_RX);
+  Serial1.setTX(UART_TX);
+  Serial1.begin(9600);
   Serial.begin(9600);
   while(!Serial){
   }
@@ -189,6 +194,7 @@ void setup() {
   PWMTimer.resetTime();
   printTimer.resetTime();
   sensorSetup.resetTime();
+  telemTimer.resetTime();
   //testTimer.resetTime();
   testCountdown.changeTimer(5000);
   //Serial.println(testCountdown.getTimeLeft());
@@ -267,6 +273,30 @@ void setup() {
   }
   digitalWrite(DEBUG_LED_4, LOW);
   LEDTimer.resetTime();
+}
+String missionTime(long milliseconds){
+  String output;
+  long hours = milliseconds/3600000;
+  long minutes = (milliseconds%3600000)/60000;
+  long seconds = ((milliseconds%3600000)%60000)/1000;
+  long millisecs = ((milliseconds%3600000)%60000)%1000;
+  output = hours;
+  output += ":";
+  output += minutes;
+  output += ":";
+  output += seconds;
+  output += ".";
+  outpt += millisecs;
+  return(output);
+}
+
+void telemetry(long frequency){
+  if(telemTimer.getTime() > frequency){
+    Serial1.print("MOAB");
+    Serial1.print(",");
+    Serlial1.print(missionTime(millis()));
+    Serial1.print(",");
+  }
 }
 
 //Functions Here
