@@ -5,7 +5,10 @@
 #include <Adafruit_BME680.h>
 #include <utility/imumaths.h>
 
+//#define openLog _UART1_
 #define SEALEVELPRESSURE_HPA (1013.25)
+
+UART openLog(0,1,NC,NC);
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Adafruit_BME680 bme;
@@ -179,9 +182,9 @@ void PWMLoop(){
 }
 
 void setup() {
-  Serial1.setRX(UART_RX);
-  Serial1.setTX(UART_TX);
-  Serial1.begin(9600);
+  //openLog.setRX(UART_RX);
+  //openLog.setTX(UART_TX);
+  openLog.begin(9600);
   Serial.begin(9600);
   while(!Serial){
   }
@@ -280,13 +283,13 @@ String missionTime(long milliseconds){
   long minutes = (milliseconds%3600000)/60000;
   long seconds = ((milliseconds%3600000)%60000)/1000;
   long millisecs = ((milliseconds%3600000)%60000)%1000;
-  output = hours;
+  output = (String)hours;
   output += ":";
-  output += minutes;
+  output += (String)minutes;
   output += ":";
-  output += seconds;
+  output += (String)seconds;
   output += ".";
-  outpt += millisecs;
+  output += (String)millisecs;
   return(output);
 }
 
@@ -294,7 +297,7 @@ void telemetry(long frequency){
   if(telemTimer.getTime() > frequency){
     Serial1.print("MOAB");
     Serial1.print(",");
-    Serlial1.print(missionTime(millis()));
+    Serial1.print(missionTime(millis()));
     Serial1.print(",");
   }
 }

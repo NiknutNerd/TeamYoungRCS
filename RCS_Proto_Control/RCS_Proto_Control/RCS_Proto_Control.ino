@@ -31,12 +31,14 @@ const int SERVO_CONTROL = 17;
 const int SOLENOID_CW = 20;
 const int SOLENOID_CCW = 21;
 
-const double MIN_CYCLE = 1.0/5.0;
+const double MIN_CYCLE = 1.0/10.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
 double offPercent;
 long onTime;
 long offTime;
+
+int switchState;
 
 double targetX;
 double currentX;
@@ -86,6 +88,7 @@ Timer sensorSetup;
 Timer printTimer;
 Timer solenoidTimer;
 Timer LEDTimer;
+Timer servoTimer;
 
 CountdownTimer aCountdown(0);
 CountdownTimer bCountdown(0);
@@ -95,6 +98,9 @@ CountdownTimer bOnCountdown(0);
 CountdownTimer bOffCountdown(0);
 
 void PWMSetup(double percent){
+  if(aCountdown.getTimeLeft() > 0 || bCountdown.getTimeLeft() > 0){
+    return;
+  }
   if(percent > 0){
     bCountdown.changeTimer(0);
     bOnCountdown.changeTimer(0);
@@ -156,13 +162,6 @@ void PWMLoop(){
 }
 
 void setup() {
-  Serial.begin(9600);
-  while(!Serial){
-  }
-  Serial.println("Control Program Starting");
-
-  Serial.println("Starting Sensors");
-
   pinMode(BRIGHT_LED, OUTPUT);
   pinMode(DEBUG_LED_1, OUTPUT);
   pinMode(DEBUG_LED_2, OUTPUT);
@@ -170,6 +169,15 @@ void setup() {
   pinMode(SOLENOID_CW, OUTPUT);
   pinMode(SOLENOID_CCW, OUTPUT);
   pinMode(SWITCH_PIN, INPUT);
+
+  switchState = digitalRead(SWITCH_PIN);
+  if(switchState == HIGH){
+    Serial.begin(9600);
+    while(!Serial){
+    }
+    Serial.println("Control Program Starting");
+    Serial.println("Starting Sensors");
+  }
 
   while(sensorSetup.getTime() < 5000){
     digitalWrite(DEBUG_LED_1, HIGH);
@@ -181,7 +189,7 @@ void setup() {
   sensorSetup.resetTime();
   digitalWrite(DEBUG_LED_1, LOW);
   if(!bno.begin() || !bme.begin()){
-    Serial.println("No IMU or BME Detected");
+    //Serial.println("No IMU or BME Detected");
     while(1){
       if(LEDTimer.getTime() < 250){
         digitalWrite(DEBUG_LED_1, HIGH);
@@ -221,16 +229,19 @@ void setup() {
 
   digitalWrite(SENSOR_RESET, HIGH);
   
+  /*
   while(gyro < 3 && mag < 3){
     bno.getCalibration(&system, &gyro, &accel, &mag);
     digitalWrite(DEBUG_LED_2, HIGH);
   }
+  */
   digitalWrite(DEBUG_LED_2, LOW);
 
   printTimer.resetTime();
   sensorSetup.resetTime();
   solenoidTimer.resetTime();
   LEDTimer.resetTime();
+  servoTimer.resetTime();
 }
 
 void limitedPrint(long frequency){
@@ -264,10 +275,10 @@ void limitedPrint(long frequency){
     Serial.println("");
 
     Serial.print("Gyro: ");
-    Serial.print(" X:");
+    Serial.print(" X: ");
     Serial.print(event.gyro.x);
     Serial.print(" Y: ");
-    Serial.print(event.gyro.y)l
+    Serial.print(event.gyro.y);
     Serial.print(" Z: ");
     Serial.println(event.gyro.z);
 
@@ -293,8 +304,30 @@ void limitedPrint(long frequency){
 }
 
 void loop() {
-  limitedPrint(1000);
+  switchState = digitalRead(SWITCH_PIN);
+  if(switchState == HIGH){
+    limitedPrint(1000);
+  }
   bno.getEvent(&event);
+  /*
+  if(solenoidTimer.getTime() < 5000){
+    digitalWrite(DEBUG_LED_1, HIGH);
+    digitalWrite(DEBUG_LED_2, HIGH);
+  }else if(solenoidTimer.getTime() < 6000){
+    digitalWrite(SOLENOID_CCW, HIGH);
+  }else{
+    digitalWrite(SOLENOID_CCW, LOW);
+  }
+  */
+  if(false){
+    if(servoTimer.getTime() < 1000){
+      analogWrite(SERVO_CONTROL, 200);
+    }else if(servoTimer.getTime() < 2000){
+      analogWrite(SERVO_CONTROL, 100);
+    }else{
+      servoTimer.resetTime();
+    }
+  }
 
   if(false){
     if(LEDTimer.getTime() < 250){
@@ -321,27 +354,17 @@ void loop() {
       LEDTimer.resetTime();
     }
   }
-  if(false){
-    if(solenoidTimer.getTime() < 2000){
-      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
-        PWMSetup(.75);
-      }
+  if(true){
+    if(solenoidTimer.getTime() < 1000){
+      PWMSetup(.75);
+    }else if(solenoidTimer.getTime() < 2000){
+      PWMSetup(.5);
+    }else if(solenoidTimer.getTime() < 3000){
+      PWMSetup(-.75);
     }else if(solenoidTimer.getTime() < 4000){
-      if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
-        PWMSetup(.5);
-      }
-    }else if(solenoidTimer.getTime() < 6000){
-      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
-        PWMSetup(-.75);
-      }
-    }else if(solenoidTimer.getTime() < 8000){
-      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
-        PWMSetup(-.5);
-      }
-    }else if(solenoidTimer.getTime() < 10000){
-      if(aCountdown.getTimeLeft() < 0 && bCountdown.getTimeLeft() < 0){
-        PWMSetup(0.0);
-      }
+      PWMSetup(-.5);
+    }else if(solenoidTimer.getTime() < 5000){
+      PWMSetup(0.0);
     }else{
       solenoidTimer.resetTime();
     }
@@ -353,9 +376,12 @@ void loop() {
     targetX = 180;
     errorX = targetX - currentX;
     double inputPower = errorX * (1.0/180.0);
+    /*
     if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
       PWMSetup(inputPower);
     }
+    */
+    PWMSetup(inputPower);
     PWMLoop();
   }
 }
