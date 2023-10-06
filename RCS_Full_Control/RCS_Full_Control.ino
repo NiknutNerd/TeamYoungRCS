@@ -19,8 +19,8 @@ const int I2C_CLOCK = 5;
 
 const int SWITCH_PIN = 6;
 
-const int DEBUG_LED_1 = 8;
-const int DEBUG_LED_2 = 9;
+const int DEBUG_LED_1 = 20;
+const int DEBUG_LED_2 = 21;
 const int DEBUG_LED_3 = 25;
 const int BRIGHT_LED = 19;
 
@@ -28,8 +28,8 @@ const int SENSOR_RESET = 11;
 const int SERVO_FEEDBACK= 16;
 const int SERVO_CONTROL = 17;
 
-const int SOLENOID_CW = 20;
-const int SOLENOID_CCW = 21;
+const int SOLENOID_CW = 8;
+const int SOLENOID_CCW = 9;
 
 const double MIN_CYCLE = 1.0/10.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
@@ -43,6 +43,7 @@ int switchState;
 double targetX;
 double currentX;
 double errorX;
+double inputPower;
 
 class Timer{
   private:
@@ -101,14 +102,26 @@ void PWMSetup(double percent){
   if(aCountdown.getTimeLeft() > 0 || bCountdown.getTimeLeft() > 0){
     return;
   }
-  if(percent > 0){
+  if(percent < .05 && percent > -.05){
+    aCountdown.changeTimer(0);
+    aOnCountdown.changeTimer(0);
+    aOffCountdown.changeTimer(0);
+
     bCountdown.changeTimer(0);
     bOnCountdown.changeTimer(0);
     bOffCountdown.changeTimer(0);
+  }else if(percent > 0){
+    bCountdown.changeTimer(0);
+    bOnCountdown.changeTimer(0);
+    bOffCountdown.changeTimer(0);
+    digitalWrite(SOLENOID_CW, LOW);
 
     onPercent = percent;
     offPercent = 1 - percent;
-    if(onPercent >= offPercent){
+    if(onPercent > 0.9){
+      onTime = MIN_CYCLE_MILLIS;
+      offTime = 0;
+    }else if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
       onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
@@ -123,10 +136,14 @@ void PWMSetup(double percent){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
     aOffCountdown.changeTimer(0);
+    digitalWrite(SOLENOID_CCW, LOW);
     
     onPercent = abs(percent);
     offPercent = 1 - abs(percent);
-    if(onPercent >= offPercent){
+    if(onPercent > 0.9){
+      onTime = MIN_CYCLE_MILLIS;
+      offTime = 0;
+    }else if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
       onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
@@ -136,23 +153,17 @@ void PWMSetup(double percent){
     bCountdown.changeTimer(onTime + offTime);
     bOnCountdown.changeTimer(onTime);
     bOffCountdown.changeTimer(onTime+offTime);
-  }else if(percent == 0){
-    aCountdown.changeTimer(0);
-    aOnCountdown.changeTimer(0);
-    aOffCountdown.changeTimer(0);
-
-    bCountdown.changeTimer(0);
-    bOnCountdown.changeTimer(0);
-    bOffCountdown.changeTimer(0);
   }
 }
 void PWMLoop(){
   if(aOnCountdown.getTimeLeft() > 0){
     digitalWrite(SOLENOID_CW, HIGH);
+    digitalWrite(SOLENOID_CCW, LOW);
   }else if(aOffCountdown.getTimeLeft() > 0){
     digitalWrite(SOLENOID_CW, LOW);
   }else if(bOnCountdown.getTimeLeft() > 0){
     digitalWrite(SOLENOID_CCW, HIGH);
+    digitalWrite(SOLENOID_CW, LOW);
   }else if(bOffCountdown.getTimeLeft() > 0){
     digitalWrite(SOLENOID_CCW, LOW);
   }else{
@@ -229,12 +240,12 @@ void setup() {
 
   digitalWrite(SENSOR_RESET, HIGH);
   
-  /*
+  
   while(gyro < 3 && mag < 3){
     bno.getCalibration(&system, &gyro, &accel, &mag);
     digitalWrite(DEBUG_LED_2, HIGH);
   }
-  */
+  
   digitalWrite(DEBUG_LED_2, LOW);
 
   printTimer.resetTime();
@@ -247,6 +258,7 @@ void setup() {
 void limitedPrint(long frequency){
   if(printTimer.getTime() > frequency){
     Serial.println("Telemetry: ");
+
     Serial.print("A Countdowns: ");
     Serial.print(aCountdown.getTimeLeft());
     Serial.print(aOnCountdown.getTimeLeft());
@@ -257,22 +269,37 @@ void limitedPrint(long frequency){
     Serial.print(bOnCountdown.getTimeLeft());
     Serial.println(bOffCountdown.getTimeLeft());
 
-    Serial.print("Temperature = ");
-    Serial.print(bme.temperature);
-    Serial.println(" *C");
-    Serial.print("Pressure = ");
-    Serial.print(bme.pressure / 100.0);
-    Serial.println(" hPa");
-    Serial.print("Humidity = ");
-    Serial.print(bme.humidity);
-    Serial.println(" %");
-    Serial.print("Gas = ");
-    Serial.print(bme.gas_resistance / 1000.0);
-    Serial.println(" KOhms");
-    Serial.print("Approximate Altitude = ");
-    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    Serial.println(" m");
-    Serial.println("");
+    Serial.print("Error: ");
+    Serial.print(errorX);
+    Serial.print(" Input: ");
+    Serial.println(inputPower);
+
+    Serial.println(analogRead(SERVO_FEEDBACK));
+
+    /*
+    if(!bme.performReading()){
+      Serial.print("BME Temp Failed");
+    }else{
+      Serial.print("Temperature = ");
+      Serial.print(bme.temperature);
+      Serial.println(" *C");
+    }
+    */
+
+    
+    //Serial.print("Pressure = ");
+    //Serial.print(bme.pressure / 100.0);
+    //Serial.println(" hPa");
+    //Serial.print("Humidity = ");
+    //Serial.print(bme.humidity);
+    //Serial.println(" %");
+    //Serial.print("Gas = ");
+    //Serial.print(bme.gas_resistance / 1000.0);
+    //Serial.println(" KOhms");
+    //Serial.print("Approximate Altitude = ");
+    //Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    //Serial.println(" m");
+    //Serial.println("");
 
     Serial.print("Gyro: ");
     Serial.print(" X: ");
@@ -309,6 +336,7 @@ void loop() {
     limitedPrint(1000);
   }
   bno.getEvent(&event);
+  analogWrite(SERVO_CONTROL, 100);
   /*
   if(solenoidTimer.getTime() < 5000){
     digitalWrite(DEBUG_LED_1, HIGH);
@@ -354,7 +382,7 @@ void loop() {
       LEDTimer.resetTime();
     }
   }
-  if(true){
+  if(false){
     if(solenoidTimer.getTime() < 1000){
       PWMSetup(.75);
     }else if(solenoidTimer.getTime() < 2000){
@@ -375,7 +403,7 @@ void loop() {
     currentX = event.orientation.x;
     targetX = 180;
     errorX = targetX - currentX;
-    double inputPower = errorX * (1.0/180.0);
+    inputPower = errorX / 180.0;
     /*
     if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
       PWMSetup(inputPower);
