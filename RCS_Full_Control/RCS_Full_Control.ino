@@ -1,15 +1,24 @@
 #include <math.h>
 #include <Wire.h>
+#include <Servo.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <Adafruit_BME680.h>
+#include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <utility/imumaths.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Adafruit_BME680 bme;
+SFE_UBLOX_GNSS gps;
+Servo camServo;
 sensors_event_t event;
+
+imu::Vector<3> orientation;
+imu::Vector<3> gyro;
+imu::Vector<3> accel;
+imu::Vector<3> linAccel;
 
 const int UART_TX = 0;
 const int UART_RX = 1;
@@ -19,19 +28,19 @@ const int I2C_CLOCK = 5;
 
 const int SWITCH_PIN = 6;
 
-const int DEBUG_LED_1 = 20;
-const int DEBUG_LED_2 = 21;
+const int DEBUG_LED_1 = 8;
+const int DEBUG_LED_2 = 9;
 const int DEBUG_LED_3 = 25;
 const int BRIGHT_LED = 19;
 
 const int SENSOR_RESET = 11;
-const int SERVO_FEEDBACK= 16;
+const int SERVO_FEEDBACK= A0;
 const int SERVO_CONTROL = 17;
 
-const int SOLENOID_CW = 8;
-const int SOLENOID_CCW = 9;
+const int SOLENOID_CCW = 20;
+const int SOLENOID_CW = 21;
 
-const double MIN_CYCLE = 1.0/10.0;
+const double MIN_CYCLE = 1.0/20.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
 double offPercent;
@@ -57,7 +66,7 @@ class Timer{
       long timeSinceStart = (long)millis() - startTime;
       return timeSinceStart;
     }
-    void resetTime(){
+    void reset(){
       startTime = (long)millis();
       timeSinceStart = 0;
     }
@@ -72,7 +81,7 @@ class CountdownTimer{
       initialTime = time;
       targetTime = (long)millis() + time; 
     }
-    long getTimeLeft(){
+    long getTime(){
       long timeLeft = targetTime - (long)millis();
       if(timeLeft < 0){
         timeLeft = -1;
@@ -98,8 +107,15 @@ CountdownTimer aOffCountdown(0);
 CountdownTimer bOnCountdown(0);
 CountdownTimer bOffCountdown(0);
 
+void imuStuff(){
+  orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+  accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+}
+
 void PWMSetup(double percent){
-  if(aCountdown.getTimeLeft() > 0 || bCountdown.getTimeLeft() > 0){
+  if(aCountdown.getTime() > 0 || bCountdown.getTime() > 0){
     return;
   }
   if(percent < .05 && percent > -.05){
@@ -156,15 +172,15 @@ void PWMSetup(double percent){
   }
 }
 void PWMLoop(){
-  if(aOnCountdown.getTimeLeft() > 0){
+  if(aOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CW, HIGH);
     digitalWrite(SOLENOID_CCW, LOW);
-  }else if(aOffCountdown.getTimeLeft() > 0){
+  }else if(aOffCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CW, LOW);
-  }else if(bOnCountdown.getTimeLeft() > 0){
+  }else if(bOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CCW, HIGH);
     digitalWrite(SOLENOID_CW, LOW);
-  }else if(bOffCountdown.getTimeLeft() > 0){
+  }else if(bOffCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CCW, LOW);
   }else{
     digitalWrite(SOLENOID_CW, LOW);
@@ -189,17 +205,18 @@ void setup() {
     Serial.println("Control Program Starting");
     Serial.println("Starting Sensors");
   }
+  Wire.begin();
 
   while(sensorSetup.getTime() < 5000){
     digitalWrite(DEBUG_LED_1, HIGH);
-    if(bno.begin() && bme.begin()){
+    if(bno.begin() && bme.begin() && gps.begin()){
       break;
     }
   }
   
-  sensorSetup.resetTime();
+  sensorSetup.reset();
   digitalWrite(DEBUG_LED_1, LOW);
-  if(!bno.begin() || !bme.begin()){
+  if(!bno.begin() || !bme.begin() || !gps.begin()){
     //Serial.println("No IMU or BME Detected");
     while(1){
       if(LEDTimer.getTime() < 250){
@@ -223,13 +240,20 @@ void setup() {
         digitalWrite(DEBUG_LED_3, LOW);
         digitalWrite(BRIGHT_LED, HIGH);
       }else{
-        LEDTimer.resetTime();
+        LEDTimer.reset();
       }
     }
   }
 
+  //IMU Stuff
   uint8_t system, gyro, accel, mag = 0;
   bno.setExtCrystalUse(true);
+  //IMU Callibration
+  while(gyro < 3 && mag < 3){
+    bno.getCalibration(&system, &gyro, &accel, &mag);
+    digitalWrite(DEBUG_LED_2, HIGH);
+  }
+  digitalWrite(DEBUG_LED_2, LOW);
 
   //BME Stuff
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -238,36 +262,33 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320,150);
 
+  //GPS Stuff
   digitalWrite(SENSOR_RESET, HIGH);
-  
-  
-  while(gyro < 3 && mag < 3){
-    bno.getCalibration(&system, &gyro, &accel, &mag);
-    digitalWrite(DEBUG_LED_2, HIGH);
-  }
-  
-  digitalWrite(DEBUG_LED_2, LOW);
+  //I think 1000 will work for now, should try to change to 250 later
+  gps.setI2COutput(COM_TYPE_UBX, 1000);
+  gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
 
-  printTimer.resetTime();
-  sensorSetup.resetTime();
-  solenoidTimer.resetTime();
-  LEDTimer.resetTime();
-  servoTimer.resetTime();
+  printTimer.reset();
+  sensorSetup.reset();
+  solenoidTimer.reset();
+  LEDTimer.reset();
+  servoTimer.reset();
 }
 
 void limitedPrint(long frequency){
   if(printTimer.getTime() > frequency){
+    imuStuff();
     Serial.println("Telemetry: ");
 
     Serial.print("A Countdowns: ");
-    Serial.print(aCountdown.getTimeLeft());
-    Serial.print(aOnCountdown.getTimeLeft());
-    Serial.println(aOffCountdown.getTimeLeft());
+    Serial.print(aCountdown.getTime());
+    Serial.print(aOnCountdown.getTime());
+    Serial.println(aOffCountdown.getTime());
 
     Serial.print("B Countdowns: ");
-    Serial.print(bCountdown.getTimeLeft());
-    Serial.print(bOnCountdown.getTimeLeft());
-    Serial.println(bOffCountdown.getTimeLeft());
+    Serial.print(bCountdown.getTime());
+    Serial.print(bOnCountdown.getTime());
+    Serial.println(bOffCountdown.getTime());
 
     Serial.print("Error: ");
     Serial.print(errorX);
@@ -276,31 +297,49 @@ void limitedPrint(long frequency){
 
     Serial.println(analogRead(SERVO_FEEDBACK));
 
-    /*
     if(!bme.performReading()){
       Serial.print("BME Temp Failed");
     }else{
-      Serial.print("Temperature = ");
+      Serial.print("BME Temperature: ");
       Serial.print(bme.temperature);
       Serial.println(" *C");
     }
-    */
-
-    
     //Serial.print("Pressure = ");
     //Serial.print(bme.pressure / 100.0);
     //Serial.println(" hPa");
-    //Serial.print("Humidity = ");
-    //Serial.print(bme.humidity);
-    //Serial.println(" %");
-    //Serial.print("Gas = ");
-    //Serial.print(bme.gas_resistance / 1000.0);
-    //Serial.println(" KOhms");
     //Serial.print("Approximate Altitude = ");
     //Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
     //Serial.println(" m");
-    //Serial.println("");
 
+    Serial.print("BNO Temperature: ");
+    Serial.print(bno.getTemp());
+    Serial.println("*C");
+
+    Serial.print("Sattelites In View: ");
+    Serial.println(gps.getSIV());
+    Serial.print("GPS Horizontal Acceleration: ");
+    Serial.println(gps.getHorizontalAccEst());
+    Serial.print("GPS Vertical Acceleration: ");
+    Serial.println(gps.getVerticalAccEst());
+    Serial.print("GPS Ground Speed: ");
+    Serial.println(gps.getGroundSpeed());
+    Serial.print("GPS Heading: ");
+    Serial.println(gps.getHeading());
+
+    Serial.print("Latitude: ");
+    Serial.print(gps.getLatitude());
+    Serial.println(" Degrees * 10^-7");
+    Serial.print("Longitute: ");
+    Serial.print(gps.getLongitude());
+    Serial.println(" Degrees * 10^-7");
+    Serial.print("Altitude Above Eliptic: ");
+    Serial.print(gps.getAltitude());
+    Serial.println("mm");
+    Serial.print("Altitude Above Sea Level: ");
+    Serial.print(gps.getAltitudeMSL());
+    Serial.println("mm");
+
+    /*
     Serial.print("Gyro: ");
     Serial.print(" X: ");
     Serial.print(event.gyro.x);
@@ -325,8 +364,51 @@ void limitedPrint(long frequency){
     Serial.print("Z: ");
     Serial.println(event.orientation.z);
     Serial.println("");
+    */
 
-    printTimer.resetTime();
+    Serial.println("Orientation: ");
+    Serial.print("X: ");
+    Serial.println(orientation.x());
+    Serial.print("Y: ");
+    Serial.println(orientation.y());
+    Serial.print("Z: ");
+    Serial.println(orientation.z());
+
+    Serial.println("Gyroscope Radians: ");
+    gyro.toRadians();
+    Serial.print("X: ");
+    Serial.println(gyro.x());
+    Serial.print("Y: ");
+    Serial.println(gyro.y());
+    Serial.print("Z: ");
+    Serial.println(gyro.z());
+
+    Serial.println("Gyroscope Degrees: ");
+    gyro.toDegrees();
+    Serial.print("X: ");
+    Serial.println(gyro.x());
+    Serial.print("Y: ");
+    Serial.println(gyro.y());
+    Serial.print("Z: ");
+    Serial.println(gyro.z());
+
+    Serial.println("Acceleration: ");
+    Serial.print("X: ");
+    Serial.println(accel.x());
+    Serial.print("Y: ");
+    Serial.println(accel.y());
+    Serial.print("Z: ");
+    Serial.println(accel.z());
+
+    Serial.println("Linear Acceleration:");
+    Serial.print("X: ");
+    Serial.println(linAccel.x());
+    Serial.print("Y: ");
+    Serial.println(linAccel.y());
+    Serial.print("Z: ");
+    Serial.println(linAccel.z());
+
+    printTimer.reset();
   }
 }
 
@@ -336,28 +418,31 @@ void loop() {
     limitedPrint(1000);
   }
   bno.getEvent(&event);
-  analogWrite(SERVO_CONTROL, 100);
-  /*
-  if(solenoidTimer.getTime() < 5000){
-    digitalWrite(DEBUG_LED_1, HIGH);
-    digitalWrite(DEBUG_LED_2, HIGH);
-  }else if(solenoidTimer.getTime() < 6000){
-    digitalWrite(SOLENOID_CCW, HIGH);
-  }else{
-    digitalWrite(SOLENOID_CCW, LOW);
+  //analogWrite(SERVO_CONTROL, 100);
+  if(false){
+    if(solenoidTimer.getTime() < 5000){
+      digitalWrite(DEBUG_LED_1, HIGH);
+      digitalWrite(DEBUG_LED_2, HIGH);
+    }else if(solenoidTimer.getTime() < 6000){
+      digitalWrite(DEBUG_LED_1, LOW);
+      digitalWrite(DEBUG_LED_2, LOW);
+      digitalWrite(SOLENOID_CCW, HIGH);
+    }else{
+      digitalWrite(SOLENOID_CCW, LOW);
+    }
   }
-  */
+  
   if(false){
     if(servoTimer.getTime() < 1000){
       analogWrite(SERVO_CONTROL, 200);
     }else if(servoTimer.getTime() < 2000){
       analogWrite(SERVO_CONTROL, 100);
     }else{
-      servoTimer.resetTime();
+      servoTimer.reset();
     }
   }
 
-  if(false){
+  if(true){
     if(LEDTimer.getTime() < 250){
       digitalWrite(DEBUG_LED_1, HIGH);
       digitalWrite(DEBUG_LED_2, LOW);
@@ -379,22 +464,22 @@ void loop() {
       digitalWrite(DEBUG_LED_3, LOW);
       digitalWrite(BRIGHT_LED, HIGH);
     }else{
-      LEDTimer.resetTime();
+      LEDTimer.reset();
     }
   }
   if(false){
     if(solenoidTimer.getTime() < 1000){
-      PWMSetup(.75);
+      PWMSetup(.25);
     }else if(solenoidTimer.getTime() < 2000){
-      PWMSetup(.5);
+      PWMSetup(.1);
     }else if(solenoidTimer.getTime() < 3000){
-      PWMSetup(-.75);
+      PWMSetup(-.25);
     }else if(solenoidTimer.getTime() < 4000){
-      PWMSetup(-.5);
+      PWMSetup(-.1);
     }else if(solenoidTimer.getTime() < 5000){
       PWMSetup(0.0);
     }else{
-      solenoidTimer.resetTime();
+      solenoidTimer.reset();
     }
     PWMLoop();
   }
@@ -404,11 +489,6 @@ void loop() {
     targetX = 180;
     errorX = targetX - currentX;
     inputPower = errorX / 180.0;
-    /*
-    if(aCountdown.getTimeLeft() <= 0 && bCountdown.getTimeLeft() <= 0){
-      PWMSetup(inputPower);
-    }
-    */
     PWMSetup(inputPower);
     PWMLoop();
   }
