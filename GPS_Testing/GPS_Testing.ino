@@ -34,17 +34,19 @@ class Timer{
 
 Timer printTimer;
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(38400);
+  Serial.println("Setup Started");
   Wire.begin();
   while(!gps.begin()){
     digitalWrite(DEBUG_LED_1, HIGH);
+    Serial.println("GPS Not Working");
   }
   digitalWrite(DEBUG_LED_1, LOW);
 
   //GPS Stuff
   digitalWrite(SENSOR_RESET, HIGH);
   //I think 1000 will work for now, should try to change to 250 later
-  gps.setI2COutput(COM_TYPE_UBX, 1000);
+  gps.setI2COutput(COM_TYPE_UBX);
   gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
 
   printTimer.resetTime();
@@ -55,7 +57,9 @@ void limitedPrint(long frequency){
     Serial.print("GPS Telemetry: ");
 
     Serial.print("Sattelites In View: ");
-    Serial.println(gps.getSIV());
+    Serial.print(gps.getSIV());
+    byte SIV = gps.getSIV();
+    Serial.println(SIV);
     Serial.print("Horizontal Accuracy: ");
     Serial.println(gps.getHorizontalAccEst());
     Serial.print("Vertical Accuracy: ");
@@ -67,6 +71,19 @@ void limitedPrint(long frequency){
     //Serial.print("Position Accuracy: ");
     //Serial.println(gps.getPositionAccuracy());
     Serial.println("");
+
+    Serial.print("Year: ");
+    Serial.println(gps.getYear());
+    Serial.print("Month: ");
+    Serial.println(gps.getMonth());
+    Serial.print("Day: ");
+    Serial.println(gps.getDay());
+    Serial.print("Hour: ");
+    Serial.println(gps.getHour());
+    Serial.print("Minute: ");
+    Serial.println(gps.getMinute());
+    Serial.print("Second: ");
+    Serial.println(gps.getSecond());
 
     Serial.print("Ground Speed: ");
     Serial.println(gps.getGroundSpeed());
@@ -85,6 +102,8 @@ void limitedPrint(long frequency){
     Serial.print("Altitude Above Sea Level: ");
     Serial.print(gps.getAltitudeMSL());
     Serial.println("mm");
+    Serial.println("");
+    Serial.println("");
 
 
   }
@@ -92,5 +111,6 @@ void limitedPrint(long frequency){
 
 void loop() {
   // put your main code here, to run repeatedly:
+  limitedPrint(1000);
 
 }
