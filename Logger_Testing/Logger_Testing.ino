@@ -1,5 +1,6 @@
 //#include "SoftwareSerialTX.h"
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
+#include <uart.h>
 const int UART_TX = 0;
 const int UART_RX = 1;
 
@@ -27,7 +28,8 @@ class Timer{
 Timer telemTimer;
 
 void setup() {
-  openLog.begin(9600);
+  //openLog.begin(9600);
+  Serial1.begin(9600);
   /*
   while(!openLog){
   }
@@ -56,13 +58,14 @@ String missionTime(long milliseconds){
 
 void telemetry(long frequency){
   if(telemTimer.getTime() > frequency){
-    openLog.write("MOAB");
-    openLog.write(",");
-    openLog.write(missionTime(millis()));
-    openLog.write(",");
+    Serial1.print("MOAB");
+    Serial1.print(",");
+    Serial1.print(missionTime(millis()));
+    Serial1.print(",");
   }
 }
 
 void loop() {
+  Serial1.print("Maybe?");
   telemetry(250);
 }

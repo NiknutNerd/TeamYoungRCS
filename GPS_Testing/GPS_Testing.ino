@@ -57,9 +57,7 @@ void limitedPrint(long frequency){
     Serial.print("GPS Telemetry: ");
 
     Serial.print("Sattelites In View: ");
-    Serial.print(gps.getSIV());
-    byte SIV = gps.getSIV();
-    Serial.println(SIV);
+    Serial.println(gps.getSIV());
     Serial.print("Horizontal Accuracy: ");
     Serial.println(gps.getHorizontalAccEst());
     Serial.print("Vertical Accuracy: ");

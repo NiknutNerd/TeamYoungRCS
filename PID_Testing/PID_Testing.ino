@@ -1,5 +1,6 @@
 #include <math.h>
 #include <Wire.h>
+#
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 
@@ -14,10 +15,13 @@ const int I2C_CLOCK = 5;
 
 const int SWITCH_PIN = 6;
 
-const int SOLENOID_CW = 20;
-const int SOLENOID_CCW = 21;
+const int DEBUG_LED_1 = 8;
+const int DEBUG_LED_2 = 9;
 
-const double MIN_CYCLE = 1.0/10.0;
+const int SOLENOID_CW = 21;
+const int SOLENOID_CCW = 20;
+
+const double MIN_CYCLE = 1.0/25.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
 double offPercent;
@@ -27,13 +31,27 @@ long offTime;
 int switchState;
 
 //PID Variables
-float pidError;
-float p;
-float kp;
-float i;
-float ki;
-float d;
-float kd;
+float oPIDError;
+float oLastTarget = 0.0;
+float op = 0.0;
+float okp = 0.001;
+float oi = 0.0;
+float oki = 0.0;
+float od = 0.0;
+float okd = 0.0;
+float oPIDOutput;
+
+float vPIDError;
+float vLastTarget = 0.0;
+float vp = 0.0;
+float vkp = 0.035;
+float vi = 0.0;
+float vki = 0.0;
+float vd = 0.0;
+float vkd = 0.0;
+float vPIDOutput;
+
+float inputBeingUsed;
 
 class Timer{
   private:
@@ -47,7 +65,7 @@ class Timer{
       long timeSinceStart = (long)millis() - startTime;
       return timeSinceStart;
     }
-    void resetTime(){
+    void reset(){
       startTime = (long)millis();
       timeSinceStart = 0;
     }
@@ -76,6 +94,9 @@ class CountdownTimer{
 };
 
 Timer printTimer;
+Timer oPIDTimer;
+Timer vPIDTimer;
+Timer solenoidTimer;
 
 CountdownTimer aCountdown(0);
 CountdownTimer bCountdown(0);
@@ -90,17 +111,71 @@ void imuStuff(){
   accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 }
-/*
-float PID(float target){
-  //pidError = target - 
+
+float oPID(float target){
+  imuStuff();
+  float current = orientation.x();
+  if((target - current) > 180){
+    oPIDError = (target - current) - 360;
+  }else if((target - current) < -180){
+    oPIDError = (target - current) + 360;
+  }else{
+    oPIDError = target - current;
+  }
+  od = (oPIDError - op) / oPIDTimer.getTime();
+  oi = oi + (oPIDError * oPIDTimer.getTime());
+  op = oPIDError;
+  
+  oPIDTimer.reset();
+  //add way to reset i if target is changed
+  if(target != oLastTarget){
+    oi = 0;
+  }
+  if(oki * oi > .2){
+    oi = .2 / oki;
+  }else if(oki * oi < -.2){
+    oi = (-1) * (.2 / oki);
+  }
+  oPIDOutput = (okp * op) + (oki * oi) + (okd * od);
+  oLastTarget = target;
+  
+  return oPIDOutput;
 }
-*/
+
+float vPID(float target){
+  imuStuff();
+  float current = gyro.z();
+  vPIDError = (current - target);
+  //vPIDError = (-1) * (target - current);
+  vd = (vPIDError - vp) / vPIDTimer.getTime();
+  vi = vi + (vPIDError * vPIDTimer.getTime());
+  vp = vPIDError;
+  
+  vPIDTimer.reset();
+  //add way to reset i if target is changed
+  
+  if(target != vLastTarget){
+    vi = 0;
+  }
+  
+  if(vki * vi > .2){
+    vi = .2 / vki;
+  }else if(vki * vi < -.2){
+    vi = (-1) * (.2 / vki);
+  }
+  vLastTarget = target;
+  vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
+  
+  return vPIDOutput;
+}
+
 
 void PWMSetup(double percent){
   if(aCountdown.getTimeLeft() > 0 || bCountdown.getTimeLeft() > 0){
     return;
   }
-  if(percent < .05 && percent > -.05){
+  inputBeingUsed = percent;
+  if(percent < .1 && percent > -.1){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
     aOffCountdown.changeTimer(0);
@@ -116,10 +191,11 @@ void PWMSetup(double percent){
 
     onPercent = percent;
     offPercent = 1 - percent;
-    if(onPercent > 0.9){
-      onTime = MIN_CYCLE_MILLIS;
-      offTime = 0;
-    }else if(onPercent >= offPercent){
+    if(percent > .8){
+      onPercent = .8;
+      offPercent = .1;
+    }
+    if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
       onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
@@ -138,10 +214,11 @@ void PWMSetup(double percent){
     
     onPercent = abs(percent);
     offPercent = 1 - abs(percent);
-    if(onPercent > 0.9){
-      onTime = MIN_CYCLE_MILLIS;
-      offTime = 0;
-    }else if(onPercent >= offPercent){
+    if(abs(percent) > .8){
+      onPercent = .8;
+      offPercent = .1;
+    }
+    if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
       onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
@@ -173,6 +250,8 @@ void PWMLoop(){
 void setup() {
   pinMode(SOLENOID_CW, OUTPUT);
   pinMode(SOLENOID_CCW, OUTPUT);
+  pinMode(DEBUG_LED_1, OUTPUT);
+  pinMode(DEBUG_LED_2, OUTPUT);
   pinMode(SWITCH_PIN, INPUT);
 
   switchState = digitalRead(SWITCH_PIN);
@@ -187,14 +266,31 @@ void setup() {
   while(!bno.begin()){
   }
 
-  uint8_t system, gyro, accel, mag = 0;
+  uint8_t system, gyroo, accel, mag = 0;
   bno.setExtCrystalUse(true);
+
+  while(gyroo < 3 && mag < 3){
+    bno.getCalibration(&system, &gyroo, &accel, &mag);
+    digitalWrite(DEBUG_LED_2, HIGH);
+  }
+  digitalWrite(DEBUG_LED_2, LOW);
+  imuStuff();
+  gyro.toDegrees();
+
+  printTimer.reset();
+  oPIDTimer.reset();
+  vPIDTimer.reset();
+  solenoidTimer.reset();
 }
 
 
 void limitedPrint(long frequency){
+  orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+  accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
   if(printTimer.getTime() > frequency){
-    imuStuff();
+    //imuStuff();
     Serial.println("Telemetry: ");
 
     Serial.print("A Countdowns: ");
@@ -209,53 +305,76 @@ void limitedPrint(long frequency){
 
     Serial.println("Orientation: ");
     Serial.print("X: ");
-    Serial.println(orientation.x());
+    Serial.print(orientation.x());
+    Serial.println(" degrees");
     Serial.print("Y: ");
-    Serial.println(orientation.y());
+    Serial.print(orientation.y());
+    Serial.println(" degrees");
     Serial.print("Z: ");
-    Serial.println(orientation.z());
-
-    Serial.println("Gyroscope Radians: ");
-    gyro.toRadians();
-    Serial.print("X: ");
-    Serial.println(gyro.x());
-    Serial.print("Y: ");
-    Serial.println(gyro.y());
-    Serial.print("Z: ");
-    Serial.println(gyro.z());
+    Serial.print(orientation.z());
+    Serial.println(" degrees");
 
     Serial.println("Gyroscope Degrees: ");
-    gyro.toDegrees();
     Serial.print("X: ");
-    Serial.println(gyro.x());
+    Serial.print(gyro.x());
+    Serial.println(" degrees per second");
     Serial.print("Y: ");
-    Serial.println(gyro.y());
+    Serial.print(gyro.y());
+    Serial.println(" degrees per second");
     Serial.print("Z: ");
-    Serial.println(gyro.z());
+    Serial.print(gyro.z());
+    Serial.println(" degrees per second");
 
-    Serial.println("Acceleration: ");
-    Serial.print("X: ");
-    Serial.println(accel.x());
-    Serial.print("Y: ");
-    Serial.println(accel.y());
-    Serial.print("Z: ");
-    Serial.println(accel.z());
-
-    Serial.println("Linear Acceleration:");
-    Serial.print("X: ");
-    Serial.println(linAccel.x());
-    Serial.print("Y: ");
-    Serial.println(linAccel.y());
-    Serial.print("Z: ");
-    Serial.println(linAccel.z());
-    printTimer.resetTime();
+    Serial.println("vPID STUFFS: ");
+    Serial.print("vP: ");
+    Serial.println(vp);
+    Serial.print("vPIDOutput: ");
+    Serial.println(vPIDOutput);
+    Serial.print("Input Being Used: ");
+    Serial.println(inputBeingUsed);
+    printTimer.reset();
   }
 }
 void loop() {
+  imuStuff();
+  /*
+  if(gyro.z() > 10.0){
+    float input = (.02) * gyro.z();
+    if(input > .75){
+      input = .75;
+    }
+    PWMSetup(input);
+  }else if(gyro.z() < -10.0){
+    float input = (.02) * gyro.z();
+    if(input < -.75){
+      input = -.75;
+    }
+    PWMSetup(input);
+  }
+  */
+  
   switchState = digitalRead(SWITCH_PIN);
   if(switchState == HIGH){
     limitedPrint(1000);
   }
-  //bno.getEvent(&event);
+  /*
+  if(solenoidTimer.getTime() < 10000){
+    PWMSetup(vPID(15));
+  }else if(solenoidTimer.getTime() < 20000){
+    PWMSetup(vPID(-10));
+  }
+  */
+  PWMSetup(vPID(oPID(90)));
+  PWMLoop();
+  
+}
 
+void loop1(){
+  //limitedPrint(1000);
+  /*
+  switchState = digitalRead(SWITCH_PIN);
+  if(switchState == HIGH){
+    limitedPrint(1000);
+  }
+  */
 }

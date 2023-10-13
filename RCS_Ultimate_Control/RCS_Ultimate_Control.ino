@@ -8,6 +8,7 @@
 #include <utility/imumaths.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
+//#define defaultMaxWait 250
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Adafruit_BME680 bme;
@@ -278,6 +279,10 @@ void setup() {
   servoTimer.reset();
 }
 
+void setup1(){
+  Serial.begin(9600);
+}
+
 void limitedPrint(long frequency){
   if(printTimer.getTime() > frequency){
     imuStuff();
@@ -301,7 +306,7 @@ void limitedPrint(long frequency){
     Serial.println(analogRead(SERVO_FEEDBACK));
 
     if(!bme.performReading()){
-      Serial.print("BME Temp Failed");
+      Serial.println("BME Temp Failed");
     }else{
       Serial.print("BME Temperature: ");
       Serial.print(bme.temperature);
@@ -310,9 +315,11 @@ void limitedPrint(long frequency){
     //Serial.print("Pressure = ");
     //Serial.print(bme.pressure / 100.0);
     //Serial.println(" hPa");
-    //Serial.print("Approximate Altitude = ");
-    //Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    //Serial.println(" m");
+
+    /*
+    Serial.print("Approximate Altitude = ");
+    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    Serial.println(" m");
 
     Serial.print("BNO Temperature: ");
     Serial.print(bno.getTemp());
@@ -320,9 +327,9 @@ void limitedPrint(long frequency){
 
     Serial.print("Sattelites In View: ");
     Serial.println(gps.getSIV());
-    Serial.print("GPS Horizontal Acceleration: ");
+    Serial.print("GPS Horizontal Accuracy: ");
     Serial.println(gps.getHorizontalAccEst());
-    Serial.print("GPS Vertical Acceleration: ");
+    Serial.print("GPS Vertical Accuracy: ");
     Serial.println(gps.getVerticalAccEst());
     Serial.print("GPS Ground Speed: ");
     Serial.println(gps.getGroundSpeed());
@@ -341,32 +348,6 @@ void limitedPrint(long frequency){
     Serial.print("Altitude Above Sea Level: ");
     Serial.print(gps.getAltitudeMSL());
     Serial.println("mm");
-
-    /*
-    Serial.print("Gyro: ");
-    Serial.print(" X: ");
-    Serial.print(event.gyro.x);
-    Serial.print(" Y: ");
-    Serial.print(event.gyro.y);
-    Serial.print(" Z: ");
-    Serial.println(event.gyro.z);
-
-    Serial.print("Accel: ");
-    Serial.print(" X: ");
-    Serial.print(event.acceleration.x);
-    Serial.print(" Y: ");
-    Serial.print(event.acceleration.y);
-    Serial.print(" Z: ");
-    Serial.println(event.acceleration.z);
-
-    Serial.println("Orientation: ");
-    Serial.print("X: ");
-    Serial.println(event.orientation.x);
-    Serial.print("Y: ");
-    Serial.println(event.orientation.y);
-    Serial.print("Z: ");
-    Serial.println(event.orientation.z);
-    Serial.println("");
     */
 
     Serial.println("Orientation: ");
@@ -416,12 +397,7 @@ void limitedPrint(long frequency){
 }
 
 void loop() {
-  switchState = digitalRead(SWITCH_PIN);
-  if(switchState == HIGH){
-    limitedPrint(1000);
-  }
-  bno.getEvent(&event);
-  //analogWrite(SERVO_CONTROL, 100);
+  imuStuff();
   if(false){
     if(solenoidTimer.getTime() < 5000){
       digitalWrite(DEBUG_LED_1, HIGH);
@@ -488,11 +464,21 @@ void loop() {
   }
 
   if(false){
-    currentX = event.orientation.x;
+    currentX = orientation.x();
     targetX = 180;
     errorX = targetX - currentX;
     inputPower = errorX / 180.0;
     PWMSetup(inputPower);
     PWMLoop();
   }
+}
+
+void loop1() {
+  limitedPrint(1000);
+  /*
+  switchState = digitalRead(SWITCH_PIN);
+  if(switchState == HIGH){
+    limitedPrint(250);
+  }
+  */
 }
