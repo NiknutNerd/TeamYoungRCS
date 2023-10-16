@@ -28,10 +28,10 @@ const int I2C_CLOCK = 5;
 
 const int SWITCH_PIN = 6;
 
-const int DEBUG_LED_1 = 8;
-const int DEBUG_LED_2 = 9;
-//const int DEBUG_LED_1 = 20;
-//const int DEBUG_LED_2 = 21;
+//const int DEBUG_LED_1 = 8;
+//const int DEBUG_LED_2 = 9;
+const int DEBUG_LED_1 = 20;
+const int DEBUG_LED_2 = 21;
 const int DEBUG_LED_3 = 25;
 const int BRIGHT_LED = 19;
 
@@ -39,10 +39,10 @@ const int SENSOR_RESET = 11;
 const int SERVO_FEEDBACK= A0;
 const int SERVO_CONTROL = 17;
 
-const int SOLENOID_CCW = 20;
-const int SOLENOID_CW = 21;
-//const int SOLENOID_CCW = 8;
-//const int SOLENOID_CW = 9;
+//const int SOLENOID_CCW = 20;
+//const int SOLENOID_CW = 21;
+const int SOLENOID_CCW = 8;
+const int SOLENOID_CW = 9;
 const double MIN_CYCLE = 1.0/20.0;
 const double MIN_CYCLE_MILLIS = MIN_CYCLE * 1000;
 double onPercent;
@@ -153,6 +153,11 @@ void imuStuff(){
   accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 }
+
+//Semaphore Stuff
+bool startTelem = false;
+bool orientationSemaphore = false;
+bool gyroSemaphore = false;
 
 void PWMSetup(double percent){
   if(aCountdown.getTime() > 0 || bCountdown.getTime() > 0){
@@ -295,7 +300,10 @@ void setup() {
   }
   digitalWrite(DEBUG_LED_2, LOW);
   imuStuff();
+
+  gyroSemaphore = true;
   gyro.toDegrees();
+  gyroSemaphore = false;
 
   //BME Stuff
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -315,17 +323,18 @@ void setup() {
   solenoidTimer.reset();
   LEDTimer.reset();
   servoTimer.reset();
+  startTelem = true;
 }
 
 void setup1(){
-  Serial.begin(9600);
+  Serial.begin(115200);
 }
 
 void limitedPrint(long frequency){
   if(printTimer.getTime() > frequency){
     imuStuff();
     Serial.println("Telemetry: ");
-
+    /*
     Serial.print("A Countdowns: ");
     Serial.print(aCountdown.getTime());
     Serial.print(aOnCountdown.getTime());
@@ -335,14 +344,14 @@ void limitedPrint(long frequency){
     Serial.print(bCountdown.getTime());
     Serial.print(bOnCountdown.getTime());
     Serial.println(bOffCountdown.getTime());
+    */
 
     Serial.print("Error: ");
     Serial.print(errorX);
     Serial.print(" Input: ");
     Serial.println(inputPower);
 
-    Serial.println(analogRead(SERVO_FEEDBACK));
-
+    /*
     if(!bme.performReading()){
       Serial.println("BME Temp Failed");
     }else{
@@ -350,6 +359,7 @@ void limitedPrint(long frequency){
       Serial.print(bme.temperature);
       Serial.println(" *C");
     }
+    */
     //Serial.print("Pressure = ");
     //Serial.print(bme.pressure / 100.0);
     //Serial.println(" hPa");
@@ -396,15 +406,6 @@ void limitedPrint(long frequency){
     Serial.print("Z: ");
     Serial.println(orientation.z());
 
-    Serial.println("Gyroscope Radians: ");
-    gyro.toRadians();
-    Serial.print("X: ");
-    Serial.println(gyro.x());
-    Serial.print("Y: ");
-    Serial.println(gyro.y());
-    Serial.print("Z: ");
-    Serial.println(gyro.z());
-
     Serial.println("Gyroscope Degrees: ");
     gyro.toDegrees();
     Serial.print("X: ");
@@ -434,131 +435,39 @@ void limitedPrint(long frequency){
   }
 }
 
+void testPrint(long frequency){
+  if(printTimer.getTime() > frequency){
+    while(orientationSemaphore == true);
+    orientationSemaphore = true;
+    imuStuff();
+    Serial.println("Orientation: ");
+    Serial.print("X: ");
+    Serial.println(orientation.x());
+    Serial.print("Y: ");
+    Serial.println(orientation.y());
+    Serial.print("Z: ");
+    Serial.println(orientation.z());
+    orientationSemaphore = false;
+  }
+  printTimer.reset();
+}
+
 void loop() {
   imuStuff();
-  if(false){
-    if(solenoidTimer.getTime() < 5000){
-      digitalWrite(DEBUG_LED_1, HIGH);
-      digitalWrite(DEBUG_LED_2, HIGH);
-    }else if(solenoidTimer.getTime() < 6000){
-      digitalWrite(DEBUG_LED_1, LOW);
-      digitalWrite(DEBUG_LED_2, LOW);
-      digitalWrite(SOLENOID_CCW, HIGH);
-    }else{
-      digitalWrite(SOLENOID_CCW, LOW);
-    }
-  }
   
-  if(false){
-    if(servoTimer.getTime() < 1000){
-      analogWrite(SERVO_CONTROL, 200);
-    }else if(servoTimer.getTime() < 2000){
-      analogWrite(SERVO_CONTROL, 100);
-    }else{
-      servoTimer.reset();
-    }
-  }
-
-  if(false){
-    if(LEDTimer.getTime() < 250){
-      digitalWrite(DEBUG_LED_1, HIGH);
-      digitalWrite(DEBUG_LED_2, LOW);
-      digitalWrite(DEBUG_LED_3, LOW);
-      digitalWrite(BRIGHT_LED, LOW);
-    }else if(LEDTimer.getTime() < 500){
-      digitalWrite(DEBUG_LED_1, LOW);
-      digitalWrite(DEBUG_LED_2, HIGH);
-      digitalWrite(DEBUG_LED_3, LOW);
-      digitalWrite(BRIGHT_LED, LOW);
-    }else if(LEDTimer.getTime() < 750){
-      digitalWrite(DEBUG_LED_1, LOW);
-      digitalWrite(DEBUG_LED_2, LOW);
-      digitalWrite(DEBUG_LED_3, HIGH);
-      digitalWrite(BRIGHT_LED, LOW);
-    }else if(LEDTimer.getTime() < 1000){
-      digitalWrite(DEBUG_LED_1, LOW);
-      digitalWrite(DEBUG_LED_2, LOW);
-      digitalWrite(DEBUG_LED_3, LOW);
-      digitalWrite(BRIGHT_LED, HIGH);
-    }else{
-      LEDTimer.reset();
-    }
-  }
   if(true){
-    if(solenoidTimer.getTime() < 1000){
-      PWMSetup(.75);
-    }else if(solenoidTimer.getTime() < 2000){
-      PWMSetup(.5);
-    }else if(solenoidTimer.getTime() < 3000){
-      PWMSetup(-.75);
-    }else if(solenoidTimer.getTime() < 4000){
-      PWMSetup(-.5);
-    }else if(solenoidTimer.getTime() < 5000){
-      PWMSetup(0.0);
-    }else{
-      solenoidTimer.reset();
-    }
-    PWMLoop();
-  }
-
-  if(false){
+    orientationSemaphore = true;
     currentX = orientation.x();
+    orientationSemaphore = false;
     targetX = 180;
     errorX = targetX - currentX;
     inputPower = errorX / 180.0;
     PWMSetup(inputPower);
     PWMLoop();
   }
-
-  switch(flightState){
-    case INIT:
-      flightState = FLIGHT_READY;
-      break;
-    case FLIGHT_READY:
-      //flight ready stuff
-      break;
-    case ASCENT:
-      //Ascent
-      break;
-    case CONTROLLED:
-      //Controlled Stuff
-      break;
-    case FREEFALL:
-      //Freefall Stuff
-      break;
-    case LANDED:
-      //Landed Stuff
-      break;
-    default:
-      if(LEDTimer.getTime() < 250){
-        digitalWrite(DEBUG_LED_1, HIGH);
-        digitalWrite(DEBUG_LED_2, LOW);
-        digitalWrite(DEBUG_LED_3, LOW);
-        digitalWrite(BRIGHT_LED, LOW);
-      }else if(LEDTimer.getTime() < 500){
-        digitalWrite(DEBUG_LED_1, LOW);
-        digitalWrite(DEBUG_LED_2, HIGH);
-        digitalWrite(DEBUG_LED_3, LOW);
-        digitalWrite(BRIGHT_LED, LOW);
-      }else if(LEDTimer.getTime() < 750){
-        digitalWrite(DEBUG_LED_1, LOW);
-        digitalWrite(DEBUG_LED_2, LOW);
-        digitalWrite(DEBUG_LED_3, HIGH);
-        digitalWrite(BRIGHT_LED, LOW);
-      }else if(LEDTimer.getTime() < 1000){
-        digitalWrite(DEBUG_LED_1, LOW);
-        digitalWrite(DEBUG_LED_2, LOW);
-        digitalWrite(DEBUG_LED_3, LOW);
-        digitalWrite(BRIGHT_LED, HIGH);
-      }else{
-        LEDTimer.reset();
-      }
-      break;
-  }
 }
 
 void loop1() {
-  //If in init this loop shouldn't run
-  while(flightState == INIT);
-
+  while(startTelem == false);
+  testPrint(1000);
 }

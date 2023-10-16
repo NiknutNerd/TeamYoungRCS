@@ -34,7 +34,7 @@ int switchState;
 float oPIDError;
 float oLastTarget = 0.0;
 float op = 0.0;
-float okp = 0.001;
+float okp = 0.1;
 float oi = 0.0;
 float oki = 0.0;
 float od = 0.0;
@@ -139,7 +139,7 @@ float oPID(float target){
   oPIDOutput = (okp * op) + (oki * oi) + (okd * od);
   oLastTarget = target;
   
-  return oPIDOutput;
+  return (-1) * oPIDOutput;
 }
 
 float vPID(float target){
@@ -326,11 +326,15 @@ void limitedPrint(long frequency){
     Serial.println(" degrees per second");
 
     Serial.println("vPID STUFFS: ");
-    Serial.print("vP: ");
-    Serial.println(vp);
+    Serial.print("oPIDOutput: ");
+    Serial.println(oPIDOutput);
+    Serial.print("oPIDError: ");
+    Serial.println(oPIDError);
     Serial.print("vPIDOutput: ");
     Serial.println(vPIDOutput);
-    Serial.print("Input Being Used: ");
+    Serial.print("vPIDError: ");
+    Serial.println(vPIDError);
+    Serial.print("PWM Input Being Used: ");
     Serial.println(inputBeingUsed);
     printTimer.reset();
   }

@@ -1,6 +1,6 @@
 //#include "SoftwareSerialTX.h"
 //#include <SoftwareSerial.h>
-#include <uart.h>
+//#include <uart.h>
 const int UART_TX = 0;
 const int UART_RX = 1;
 
@@ -36,7 +36,6 @@ void setup() {
   */
 
   telemTimer.resetTime();
-
 }
 
 String missionTime(long milliseconds){
@@ -66,6 +65,6 @@ void telemetry(long frequency){
 }
 
 void loop() {
-  Serial1.print("Maybe?");
+  //Serial1.print("Maybe?");
   telemetry(250);
 }
