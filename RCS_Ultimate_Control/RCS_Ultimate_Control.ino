@@ -37,7 +37,7 @@ const int BRIGHT_LED = 19;
 
 const int SENSOR_RESET = 11;
 const int SERVO_FEEDBACK= A0;
-const int SERVO_CONTROL = 17;
+const int SERVO_CONTROL = 18;
 
 const int SOLENOID_CCW = 20;
 const int SOLENOID_CW = 21;
@@ -79,37 +79,37 @@ class Timer{
       startTime = (long)millis();
       timeSinceStart = 0;
     }
-  long getTotalSeconds(){
-    long seconds = getTime() / 1000;
-    return seconds;
-  }
-  long getTotalMinutes(){
-    long minutes = getTotalSeconds() / 60;
-    return minutes;
-  }
-  long getHours(){
-    long hours = getTotalMinutes() / 60;
-    return hours;
-  }
-  long getTimerMinutes(){
-    long minutes = getTotalMinutes() - (getHours() * 60);
-    return minutes;
-  }
-  long getTimerSeconds(){
-    long seconds = getTotalSeconds() - (getTotalMinutes() * 60);
-    return seconds;
-  }
-  long getTimerMillis(){
-    long mil = getTime() - (getTotalSeconds() * 1000);
-    return mil;
-  }
-  String printableTimer(){
-    String timer = (String(getHours()) + ":");
-    timer += (String(getTimerMinutes()) + ":");
-    timer += (String(getTimerSeconds()) + ".");
-    timer += getTimerMillis();
-    return timer;
-  }
+    long getTotalSeconds(){
+      long seconds = getTime() / 1000;
+      return seconds;
+    }
+    long getTotalMinutes(){
+      long minutes = getTotalSeconds() / 60;
+      return minutes;
+    }
+    long getHours(){
+      long hours = getTotalMinutes() / 60;
+      return hours;
+    }
+    long getTimerMinutes(){
+      long minutes = getTotalMinutes() - (getHours() * 60);
+      return minutes;
+    }
+    long getTimerSeconds(){
+      long seconds = getTotalSeconds() - (getTotalMinutes() * 60);
+      return seconds;
+    }
+    long getTimerMillis(){
+      long mil = getTime() - (getTotalSeconds() * 1000);
+      return mil;
+    }
+    String printableTimer(){
+      String timer = (String(getHours()) + ":");
+      timer += (String(getTimerMinutes()) + ":");
+      timer += (String(getTimerSeconds()) + ".");
+      timer += getTimerMillis();
+      return timer;
+    }
 };
 
 class CountdownTimer{

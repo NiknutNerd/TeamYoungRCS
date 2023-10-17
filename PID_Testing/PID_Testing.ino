@@ -1,6 +1,5 @@
 #include <math.h>
 #include <Wire.h>
-#
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 
@@ -80,7 +79,7 @@ class CountdownTimer{
       initialTime = time;
       targetTime = (long)millis() + time; 
     }
-    long getTimeLeft(){
+    long getTime(){
       long timeLeft = targetTime - (long)millis();
       if(timeLeft < 0){
         timeLeft = -1;
@@ -171,11 +170,11 @@ float vPID(float target){
 
 
 void PWMSetup(double percent){
-  if(aCountdown.getTimeLeft() > 0 || bCountdown.getTimeLeft() > 0){
+  if(aCountdown.getTime() > 0 || bCountdown.getTime() > 0){
     return;
   }
   inputBeingUsed = percent;
-  if(percent < .1 && percent > -.1){
+  if(percent < .075 && percent > -.075){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
     aOffCountdown.changeTimer(0);
@@ -193,7 +192,7 @@ void PWMSetup(double percent){
     offPercent = 1 - percent;
     if(percent > .8){
       onPercent = .8;
-      offPercent = .1;
+      offPercent = .2;
     }
     if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
@@ -231,15 +230,15 @@ void PWMSetup(double percent){
   }
 }
 void PWMLoop(){
-  if(aOnCountdown.getTimeLeft() > 0){
+  if(aOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CW, HIGH);
     digitalWrite(SOLENOID_CCW, LOW);
-  }else if(aOffCountdown.getTimeLeft() > 0){
+  }else if(aOffCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CW, LOW);
-  }else if(bOnCountdown.getTimeLeft() > 0){
+  }else if(bOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CCW, HIGH);
     digitalWrite(SOLENOID_CW, LOW);
-  }else if(bOffCountdown.getTimeLeft() > 0){
+  }else if(bOffCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CCW, LOW);
   }else{
     digitalWrite(SOLENOID_CW, LOW);
@@ -256,7 +255,7 @@ void setup() {
 
   switchState = digitalRead(SWITCH_PIN);
   if(switchState == HIGH){
-    Serial.begin(9600);
+    Serial.begin(115200);
     while(!Serial){
     }
     Serial.println("PID Program Starting");
@@ -294,14 +293,14 @@ void limitedPrint(long frequency){
     Serial.println("Telemetry: ");
 
     Serial.print("A Countdowns: ");
-    Serial.print(aCountdown.getTimeLeft());
-    Serial.print(aOnCountdown.getTimeLeft());
-    Serial.println(aOffCountdown.getTimeLeft());
+    Serial.print(aCountdown.getTime());
+    Serial.print(aOnCountdown.getTime());
+    Serial.println(aOffCountdown.getTime());
 
     Serial.print("B Countdowns: ");
-    Serial.print(bCountdown.getTimeLeft());
-    Serial.print(bOnCountdown.getTimeLeft());
-    Serial.println(bOffCountdown.getTimeLeft());
+    Serial.print(bCountdown.getTime());
+    Serial.print(bOnCountdown.getTime());
+    Serial.println(bOffCountdown.getTime());
 
     Serial.println("Orientation: ");
     Serial.print("X: ");
