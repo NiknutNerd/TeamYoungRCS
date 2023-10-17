@@ -85,8 +85,10 @@ void limitedPrint(long frequency){
 
     Serial.print("Ground Speed: ");
     Serial.println(gps.getGroundSpeed());
-    Serial.print("Heading: ");
-    Serial.println(gps.getHeading());
+    Serial.print("ATT Heading: ");
+    Serial.println(gps.getATTheading());
+    Serial.print("ATT Heading: ");
+    Serial.println(gps.getATTheading());
 
     Serial.print("Latitude: ");
     Serial.print(gps.getLatitude());

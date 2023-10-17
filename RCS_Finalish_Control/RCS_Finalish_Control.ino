@@ -33,6 +33,7 @@ bool bmeAltSem = false;
 bool bmeTempSem = false;
 bool imuAccelSem = false;
 bool imuGyroSem = false;
+bool imuOrientSem = false;
 bool gpsLatSem = false;
 bool gpsLongSem = false;
 bool gpsAltSem = false;
@@ -71,6 +72,7 @@ const int SOLENOID_CW = 21;
 
 //Random Variables
 float gpsAltitude;
+float bmeAltitude;
 int packetCount = 0;
 
 //PWM Variables
@@ -321,11 +323,98 @@ void loggerPrint(long frequency){
     packetCount++;
     Serial1.print("MOAB");
     Serial1.print(",");
+
+    while(missionTimeSem);
+    missionTimeSem = true;
     Serial1.print(missionTime.printableTimer());
+    missionTimeSem = false;
+
     Serial1.print(",");
     Serial1.print(packetCount);
     Serial1.print(",");
-    
+
+    while(flightStateSem);
+    flightStateSem = true;
+    Serial1.print(flightState);
+    flightStateSem = false;
+
+    Serial1.print(",");
+
+    while(bmeAltSem);
+    bmeAltSem = true;
+    if(!bme.performReading()){
+      Serial1.print("error");
+    }else{
+      Serial1.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+    }
+    bmeAltSem = false;
+
+    Serial1.print(",");
+
+    while(bmeTempSem);
+    bmeTempSem = true;
+    if(!bme.performReading()){
+      Serial1.print("error");
+    }else{
+      Serial1.print(bme.temperature);
+    }
+    bmeTempSem = false;
+
+    Serial1.print(",");
+
+    imuStuff();
+    while(imuAccelSem);
+    imuAccelSem = true;
+    Serial1.print(accel.x());
+    Serial1.print(",");
+    Serial1.print(accel.y());
+    Serial1.print(",");
+    Serial1.print(accel.z());
+    imuAccelSem = false;
+
+    Serial1.print(",");
+
+    while(imuGyroSem);
+    imuGyroSem = true;
+    Serial1.print(gyro.x());
+    Serial1.print(",");
+    Serial1.print(gyro.y());
+    Serial1.print(",");
+    Serial1.print(gyro.z());
+    imuGyroSem = true;
+
+    Serial1.print(",");
+
+    while(imuOrientSem);
+    imuOrientSem = true;
+    Serial1.print(orientation.x());
+    Serial1.print(",");
+    Serial1.print(orientation.y());
+    Serial1.print(",");
+    Serial1.print(orientation.z());
+    imuOrientSem = false;
+
+    Serial1.print(",");
+
+    while(gpsLatSem);
+    gpsLatSem = true;
+    float gpsLat = (float)gps.getLatitude() * 0.0000001;
+    gpsLatSem = false;
+    Serial1.print(gpsLat);
+    Serial1.print(",");
+
+    while(gpsLongSem);
+    gpsLongSem = true;
+    float gpsLong = (float)gps.getLongitude() * 0.0000001;
+    gpsLongSem = false;
+    Serial1.print(gpsLong);
+    Serial1.print(",");
+
+    while(gpsAltSem);
+    gpsAltSem = true;
+    float gpsAlt = gpsAltitude;
+    gpsAltSem = false;
+    Serial1.println(gpsAlt);
   }
 }
 
@@ -408,7 +497,7 @@ void setup() {
 }
 
 void setup1(){
-  Serial1.begin(115200);
+  Serial1.begin(9600);
   while(1){
     //Don't exit setup1 until setup is done
     while(flightStateSem);
@@ -449,8 +538,24 @@ void loop() {
       or
       When GPS Altitude hits 18km (18000m)
       */
-      while()
-      gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+      {
+        while(gpsAltSem);
+        gpsAltSem = true;
+        float gpsAlt = gpsAltitude;
+        gpsAltSem = false;
+
+        while(bmeAltSem);
+        bmeAltSem = true;
+        float bmeAlt = bmeAltitude;
+        bmeAltSem = false;
+
+        if(gpsAlt > 18000 || bmeAlt > 18000){
+          while(flightStateSem);
+          flightStateSem = true;
+          flightState = CONTROLLED;
+          flightStateSem = false;
+        }
+      }      
       break;
     case CONTROLLED:
       /*
@@ -484,7 +589,17 @@ void loop1(){
     digitalWrite(BRIGHT_LED, LOW);
     hazardTimer.reset();
   }
+  //Slow gps
+  while(gpsAltSem);
+  gpsAltSem = true;
+  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+  gpsAltSem = false;
 
+  while(bmeAltSem);
+  bmeAltSem = true;
+  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  bmeAltSem = false;
   //Have different blink patterns for each flight state
   //Call the telemetry print
+  loggerPrint(250);
 }
