@@ -139,6 +139,7 @@ float oPID(float target){
   oLastTarget = target;
   
   return (-1) * oPIDOutput;
+  //return oPIDOutput;
 }
 
 float vPID(float target){
@@ -165,7 +166,7 @@ float vPID(float target){
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
   
-  return vPIDOutput;
+  return (-1) * vPIDOutput;
 }
 
 
@@ -367,7 +368,8 @@ void loop() {
     PWMSetup(vPID(-10));
   }
   */
-  PWMSetup(vPID(oPID(90)));
+  PWMSetup(vPID(0));
+  //PWMSetup(vPID(oPID(90)));
   PWMLoop();
   
 }

@@ -300,6 +300,7 @@ void errorCycle(long frequency){
     digitalWrite(DEBUG_LED_1, HIGH);
     digitalWrite(DEBUG_LED_2, LOW);
     digitalWrite(DEBUG_LED_3, LOW);
+    digitalWrite(BRIGHT_LED, LOW);
   }else if(errorTimer.getTime() < (2 * frequency)){
     digitalWrite(DEBUG_LED_1, LOW);
     digitalWrite(DEBUG_LED_2, HIGH);
@@ -312,6 +313,7 @@ void errorCycle(long frequency){
     digitalWrite(DEBUG_LED_1, LOW);
     digitalWrite(DEBUG_LED_2, LOW);
     digitalWrite(DEBUG_LED_3, LOW);
+    digitalWrite(BRIGHT_LED, HIGH);
   }else{
     errorTimer.reset();
   }
@@ -435,18 +437,33 @@ void setup() {
   sensorSetup.reset(5000);
   while(!sensorSetup.isDone()){
     digitalWrite(DEBUG_LED_1, HIGH);
-    if(bno.begin() && bme.begin() && gps.begin()){
+    if(bme.begin() && gps.begin() && bno.begin()){
       break;
     }
   }
   digitalWrite(DEBUG_LED_1, LOW);
+  /*
+  while(!bno.begin()){
+    Serial.begin(9600);
+    Serial.print("fuck");
+  }
+  */
 
   if(!bno.begin() || !bme.begin() || !gps.begin()){
     /*
       If one or more of the sensors don't start, blink for error
       If it does start working it will continue
     */
-    while(!(bno.begin() && bme.begin() && gps.begin())){
+    if(!bno.begin()){
+      Serial.println("BNO");
+    }
+    if(!bme.begin()){
+      Serial.println("BME");
+    }
+    if(!gps.begin()){
+      Serial.println("GPS");
+    }
+    while(1){
       errorCycle(250);
     }
     digitalWrite(DEBUG_LED_1, LOW);
@@ -455,10 +472,10 @@ void setup() {
   }
 
   //Imu callibration
-  while(imuGyroSem);
-  while(imuAccelSem);
-  imuGyroSem = true;
-  imuAccelSem = true;
+  //while(imuGyroSem);
+  //while(imuAccelSem);
+  //imuGyroSem = true;
+  //imuAccelSem = true;
   uint8_t system, gyroscope, accel, mag = 0;
   bno.setExtCrystalUse(true);
   while(gyroscope < 3 && mag < 3){
@@ -498,6 +515,8 @@ void setup() {
 
 void setup1(){
   Serial1.begin(9600);
+  while(!Serial1);
+  /*
   while(1){
     //Don't exit setup1 until setup is done
     while(flightStateSem);
@@ -508,9 +527,11 @@ void setup1(){
     }
     flightStateSem = false;
   }
+  */
 }
 
 void loop() {
+  loggerPrint(250);
   while(flightStateSem);
   flightStateSem = true;
   currentFlightState = flightState;
@@ -577,7 +598,7 @@ void loop() {
       //Do landed stuff
       break;
     default:
-      errorCycle(500);
+      //errorCycle(500);
       break;
   }
 }
@@ -601,5 +622,5 @@ void loop1(){
   bmeAltSem = false;
   //Have different blink patterns for each flight state
   //Call the telemetry print
-  loggerPrint(250);
+  //loggerPrint(250);
 }

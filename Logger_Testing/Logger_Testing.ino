@@ -66,5 +66,9 @@ void telemetry(long frequency){
 
 void loop() {
   //Serial1.print("Maybe?");
+  
+}
+
+void loop1() {
   telemetry(250);
 }
