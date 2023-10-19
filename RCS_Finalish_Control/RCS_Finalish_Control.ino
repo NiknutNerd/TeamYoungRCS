@@ -46,7 +46,6 @@ imu::Vector<3> accel;
 imu::Vector<3> linAccel;
 
 //Function to call to make sure the imu data is accessable
-/*
 void imuStuff(){
   while(imuGyroSem);
   imuGyroSem = true;
@@ -61,7 +60,6 @@ void imuStuff(){
   orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
   linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 }
-*/
 
 //Assign pins for everything that is needed
 const int I2C_DATA = 4;
@@ -80,8 +78,18 @@ float gpsAltitude;
 float bmeAltitude;
 int packetCount = 0;
 
+float vPIDError;
+float vLastTarget = 0.0;
+float vp = 0.0;
+float vkp = 0.035;
+float vi = 0.0;
+float vki = 0.0;
+float vd = 0.0;
+float vkd = 0.0;
+float vPIDOutput;
+
 //PWM Variables
-const float MIN_CYCLE = 1.0/25.0;
+const float MIN_CYCLE = 1.0/20.0;
 const float MIN_CYCLE_MILLIS = MIN_CYCLE * 1000.0;
 
 //TODO: Tune PID and put variables here
@@ -220,7 +228,7 @@ Timer hazardTimer;
 Timer errorTimer;
 Timer logTimer;
 //Timer oPIDTimer;
-//Timer vPIDTimer;
+Timer vPIDTimer;
 
 //Countdowns
 CountdownTimer sensorSetup;
@@ -230,11 +238,34 @@ CountdownTimer aCountdown;
 CountdownTimer bOnCountdown;
 CountdownTimer bCountdown;
 
-void imuStuff(){
-  orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-  accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-  linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+float vPID(float target){
+  imuStuff();
+  while(imuGyroSem);
+  imuGyroSem = true;
+  float current = gyro.z();
+  imuGyroSem = false;
+  vPIDError = (current - target);
+  //vPIDError = (-1) * (target - current);
+  vd = (vPIDError - vp) / vPIDTimer.getTime();
+  vi = vi + (vPIDError * vPIDTimer.getTime());
+  vp = vPIDError;
+  
+  vPIDTimer.reset();
+  //add way to reset i if target is changed
+  
+  if(target != vLastTarget){
+    vi = 0;
+  }
+  
+  if(vki * vi > .2){
+    vi = .2 / vki;
+  }else if(vki * vi < -.2){
+    vi = (-1) * (.2 / vki);
+  }
+  vLastTarget = target;
+  vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
+  
+  return (-1) * vPIDOutput;
 }
 
 void PWMSetup(float percent){
@@ -328,117 +359,6 @@ void errorCycle(long frequency){
     //digitalWrite(BRIGHT_LED, LOW);
   }else{
     errorTimer.reset();
-  }
-}
-
-void setup() {
-  //Set pinmode for all pins
-  pinMode(SWITCH_PIN, INPUT);
-  pinMode(SENSOR_RESET, OUTPUT);
-  pinMode(DEBUG_LED_1, OUTPUT);
-  pinMode(DEBUG_LED_2, OUTPUT);
-  pinMode(DEBUG_LED_3, OUTPUT);
-  pinMode(BRIGHT_LED, OUTPUT);
-  pinMode(SOLENOID_CW, OUTPUT);
-  pinMode(SOLENOID_CCW, OUTPUT);
-
-  Wire.begin();
-
-  //Try to start sensors for 5 seconds, if all on continue
-  sensorSetup.reset(5000);
-  while(!sensorSetup.isDone()){
-    digitalWrite(DEBUG_LED_1, HIGH);
-    if(bno.begin() && bme.begin() && gps.begin()){
-      break;
-    }
-  }
-  digitalWrite(DEBUG_LED_1, LOW);
-  
-  /*
-  while(!bno.begin()){
-    Serial.begin(9600);
-    Serial.print("fuck");
-  }
-  */
-  
-  if(!bno.begin() || !bme.begin() || !gps.begin()){
-    /*
-      If one or more of the sensors don't start, blink for error
-      If it does start working it will continue
-    */
-    Serial.begin(9600);
-    if(!bno.begin()){
-      Serial.println("BNO");
-    }
-    if(!bme.begin()){
-      Serial.println("BME");
-    }
-    if(!gps.begin()){
-      Serial.println("GPS");
-    }
-    while(1){
-      errorCycle(250);
-    }
-    digitalWrite(DEBUG_LED_1, LOW);
-    digitalWrite(DEBUG_LED_2, LOW);
-    digitalWrite(DEBUG_LED_3, LOW);
-  }
-
-  //Imu callibration
-  //while(imuGyroSem);
-  //while(imuAccelSem);
-  //imuGyroSem = true;
-  //imuAccelSem = true;
-  uint8_t system, gyroscope, accel, mag = 0;
-  bno.setExtCrystalUse(true);
-  while(gyroscope < 3 && mag < 3){
-    bno.getCalibration(&system, &gyroscope, &accel, &mag);
-    digitalWrite(DEBUG_LED_2, HIGH);
-  }
-  imuGyroSem = false;
-  imuAccelSem = false;
-  digitalWrite(DEBUG_LED_2, LOW);
-  imuStuff();
-  //Set the gyro data to be in degrees
-  //DON'T SET TO DEGREES TWICE, WILL BREAK EVERYTHING
-  while(imuGyroSem);
-  imuGyroSem = true;
-  gyro.toDegrees();
-  imuGyroSem = false;
-
-  //BME Stuff
-  bme.setTemperatureOversampling(BME680_OS_8X);
-  bme.setHumidityOversampling(BME680_OS_2X);
-  bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  bme.setGasHeater(320,150);
-
-  //GPS Stuff
-  digitalWrite(SENSOR_RESET, HIGH);
-  gps.setI2COutput(COM_TYPE_UBX, 250);
-  gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
-
-  //Reset All Timers
-  hazardTimer.reset();
-  errorTimer.reset();
-  logTimer.reset();
-  //oPIDTimer.reset();
-  //vPIDTimer.reset();
-}
-
-void setup1(){
-  Serial1.begin(9600);
-  while(!Serial1);
-  
-  while(1){
-    //Don't exit setup1 until setup is done
-    while(flightStateSem);
-    flightStateSem = true;
-    if(flightState != INIT){
-      flightStateSem = false;
-      break;
-    }
-    flightStateSem = false;
   }
 }
 
@@ -543,20 +463,124 @@ void loggerPrint(long frequency){
   }
 }
 
+void setup() {
+  //Set pinmode for all pins
+  pinMode(SWITCH_PIN, INPUT);
+  pinMode(SENSOR_RESET, OUTPUT);
+  pinMode(DEBUG_LED_1, OUTPUT);
+  pinMode(DEBUG_LED_2, OUTPUT);
+  pinMode(DEBUG_LED_3, OUTPUT);
+  pinMode(BRIGHT_LED, OUTPUT);
+  pinMode(SOLENOID_CW, OUTPUT);
+  pinMode(SOLENOID_CCW, OUTPUT);
+
+  Wire.begin();
+  digitalWrite(SENSOR_RESET, HIGH);
+  Serial.begin(9600);
+
+  //Try to start sensors for 5 seconds, if all on continue
+  sensorSetup.reset(5000);
+  while(!sensorSetup.isDone()){
+    digitalWrite(DEBUG_LED_1, HIGH);
+    if(bno.begin() && bme.begin() && gps.begin()){
+      break;
+    }
+  }
+  digitalWrite(DEBUG_LED_1, LOW);
+  
+  if(!bno.begin() || !bme.begin() || !gps.begin()){
+    /*
+      If one or more of the sensors don't start, blink for error
+      If it does start working it will continue
+    */
+    while(1){
+      errorCycle(250);
+    }
+    digitalWrite(DEBUG_LED_1, LOW);
+    digitalWrite(DEBUG_LED_2, LOW);
+    digitalWrite(DEBUG_LED_3, LOW);
+  }
+
+  //Imu callibration
+  while(imuGyroSem);
+  while(imuAccelSem);
+  imuGyroSem = true;
+  imuAccelSem = true;
+  uint8_t system, gyroscope, accel, mag = 0;
+  bno.setExtCrystalUse(true);
+  while(gyroscope < 3 && mag < 3){
+    bno.getCalibration(&system, &gyroscope, &accel, &mag);
+    digitalWrite(DEBUG_LED_2, HIGH);
+  }
+  imuGyroSem = false;
+  imuAccelSem = false;
+  digitalWrite(DEBUG_LED_2, LOW);
+  imuStuff();
+  //Set the gyro data to be in degrees
+  //DON'T SET TO DEGREES TWICE, WILL BREAK EVERYTHING
+  while(imuGyroSem);
+  imuGyroSem = true;
+  gyro.toDegrees();
+  imuGyroSem = false;
+
+  //BME Stuff
+  bme.setTemperatureOversampling(BME680_OS_8X);
+  bme.setHumidityOversampling(BME680_OS_2X);
+  bme.setPressureOversampling(BME680_OS_4X);
+  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+  bme.setGasHeater(320,150);
+
+  //GPS Stuff
+  gps.setI2COutput(COM_TYPE_UBX, 250);
+  gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
+
+  //Reset All Timers
+  hazardTimer.reset();
+  errorTimer.reset();
+  logTimer.reset();
+  //oPIDTimer.reset();
+  vPIDTimer.reset();
+  while(flightStateSem);
+  flightStateSem = true;
+  flightState = FLIGHT_READY;
+  flightStateSem = false;
+}
+
+void setup1(){
+  Serial1.begin(9600);
+  while(!Serial1);
+  
+  while(1){
+    //Don't exit setup1 until setup is done
+    while(flightStateSem);
+    flightStateSem = true;
+    if(flightState != INIT){
+      flightStateSem = false;
+      break;
+    }
+    flightStateSem = false;
+  }
+}
+
 void loop() {
-  loggerPrint(250);
+  //loggerPrint(250);
+  if(hazardTimer.getTime() < 500){
+    digitalWrite(BRIGHT_LED, HIGH);
+  }else if(hazardTimer.getTime() < 1000){
+    digitalWrite(BRIGHT_LED, LOW);
+  }else{
+    hazardTimer.reset();
+  }
+  /*
   while(flightStateSem);
   flightStateSem = true;
   currentFlightState = flightState;
   flightStateSem = false;
-
+  */
+  PWMSetup(vPID(0));
+  PWMLoop();
+  Serial.println(millis());
   switch(currentFlightState){
-    case INIT:
-      while(flightStateSem);
-      flightStateSem = true;
-      flightState = FLIGHT_READY;
-      flightStateSem = false;
-      break;
     case FLIGHT_READY:
       /*
       Exit Condition:
@@ -573,6 +597,7 @@ void loop() {
       When GPS Altitude hits 18km (18000m)
       */
       {
+        /*
         while(gpsAltSem);
         gpsAltSem = true;
         float gpsAlt = gpsAltitude;
@@ -589,6 +614,7 @@ void loop() {
           flightState = CONTROLLED;
           flightStateSem = false;
         }
+        */
       }      
       break;
     case CONTROLLED:
@@ -617,23 +643,20 @@ void loop() {
 }
 void loop1(){
   //Hazard Light Blinking, should always be happening
-  if(hazardTimer.getTime() > 900){
-    digitalWrite(BRIGHT_LED, HIGH);
-  }else if(hazardTimer.getTime() > 1000){
-    digitalWrite(BRIGHT_LED, LOW);
-    hazardTimer.reset();
-  }
+  //Serial.print("Looping");
+  //Serial.println(hazardTimer.getTime());
   //Slow gps
+  /*
   while(gpsAltSem);
   gpsAltSem = true;
   gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
   gpsAltSem = false;
-
+  */
+  /*
   while(bmeAltSem);
   bmeAltSem = true;
   bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
-  bmeAltSem = false;
-  //Have different blink patterns for each flight state
-  //Call the telemetry print
-  //loggerPrint(250);
+  bmeAltSem = false;'=
+  */
+  loggerPrint(1000);
 }

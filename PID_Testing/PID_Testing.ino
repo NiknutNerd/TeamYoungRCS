@@ -137,6 +137,7 @@ float oPID(float target){
   }
   oPIDOutput = (okp * op) + (oki * oi) + (okd * od);
   oLastTarget = target;
+
   
   return (-1) * oPIDOutput;
   //return oPIDOutput;
@@ -165,6 +166,10 @@ float vPID(float target){
   }
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
+
+  if(abs(vPIDOutput) < 1){
+    vPIDOutput = 0;
+  }
   
   return (-1) * vPIDOutput;
 }
