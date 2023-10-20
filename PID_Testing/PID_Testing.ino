@@ -218,8 +218,8 @@ void PWMSetup(double percent){
     
     onPercent = abs(percent);
     offPercent = 1 - abs(percent);
-    if(abs(percent) > .8){
-      onPercent = .8;
+    if(abs(percent) > .9){
+      onPercent = .9;
       offPercent = .1;
     }
     if(onPercent >= offPercent){
@@ -324,6 +324,11 @@ void limitedPrint(long frequency){
     Serial.println(linAccel.y());
     Serial.print("Z: ");
     Serial.println(linAccel.z());
+
+    sensors_event_t event;
+    bno.getEvent(&event);
+    Serial.println("Heading: ");
+    Serial.print(event.orientation.roll);
 
     Serial.println("Orientation: ");
     Serial.print("X: ");
