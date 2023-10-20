@@ -147,6 +147,9 @@ float vPID(float target){
   imuStuff();
   float current = gyro.z();
   vPIDError = (current - target);
+  if(abs(vPIDError) < 2){
+    return 0;
+  }
   //vPIDError = (-1) * (target - current);
   vd = (vPIDError - vp) / vPIDTimer.getTime();
   vi = vi + (vPIDError * vPIDTimer.getTime());
@@ -166,10 +169,6 @@ float vPID(float target){
   }
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
-
-  if(abs(vPIDOutput) < 1){
-    vPIDOutput = 0;
-  }
   
   return (-1) * vPIDOutput;
 }
@@ -259,6 +258,8 @@ void setup() {
   pinMode(DEBUG_LED_2, OUTPUT);
   pinMode(SWITCH_PIN, INPUT);
 
+  Serial1.begin(9600);
+
   switchState = digitalRead(SWITCH_PIN);
   if(switchState == HIGH){
     Serial.begin(115200);
@@ -307,6 +308,22 @@ void limitedPrint(long frequency){
     Serial.print(bCountdown.getTime());
     Serial.print(bOnCountdown.getTime());
     Serial.println(bOffCountdown.getTime());
+
+    Serial.println("Acceleration: ");
+    Serial.print("X: ");
+    Serial.println(accel.x());
+    Serial.print("Y: ");
+    Serial.println(accel.y());
+    Serial.print("Z: ");
+    Serial.println(accel.z());
+
+    Serial.println("Linear Acceleration: ");
+    Serial.print("X: ");
+    Serial.println(linAccel.x());
+    Serial.print("Y: ");
+    Serial.println(linAccel.y());
+    Serial.print("Z: ");
+    Serial.println(linAccel.z());
 
     Serial.println("Orientation: ");
     Serial.print("X: ");
@@ -376,6 +393,7 @@ void loop() {
   PWMSetup(vPID(0));
   //PWMSetup(vPID(oPID(90)));
   PWMLoop();
+  Serial1.println(gyro.z());
   
 }
 

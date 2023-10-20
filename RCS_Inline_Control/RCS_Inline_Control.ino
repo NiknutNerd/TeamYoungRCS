@@ -51,7 +51,10 @@ const int SOLENOID_CW = 21;
 
 //Random Variables
 float gpsAltitude;
+float gpsLatitude;
+float gpsLongitude;
 float bmeAltitude;
+int lastLoop = 0;
 int packetCount = 0;
 
 //PWM Variables
@@ -209,21 +212,15 @@ Timer vPIDTimer;
 
 //Countdowns
 CountdownTimer sensorSetup;
+CountdownTimer gpsTimer;
 //PWM Countdowns
 CountdownTimer aOnCountdown;
 CountdownTimer aCountdown;
 CountdownTimer bOnCountdown;
 CountdownTimer bCountdown;
 
-void imuStuff(){
-  orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-  accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-  linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
-}
-
 float vPID(float target){
-  //imuStuff();
+  imuStuff();
   float current = gyro.z();
   vPIDError = (current - target);
   //vPIDError = (-1) * (target - current);
@@ -341,6 +338,67 @@ void errorCycle(long frequency){
   }
 }
 
+void loggerPrint(long frequency){
+  if(logTimer.getTime() > frequency){
+    logTimer.reset();
+    packetCount++;
+    Serial1.print("MOAB");
+    Serial1.print(",");
+    Serial1.print(missionTime.printableTimer());
+    Serial1.print(",");
+    Serial1.print(packetCount);
+    Serial1.print(",");
+    Serial1.print(flightState);
+    Serial1.print(",");
+
+    if(!bme.performReading()){
+      //Serial1.print("error");
+    }else{
+      bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+    }
+    Serial1.print(bmeAltitude);
+    Serial1.print(",");
+
+    if(!bme.performReading()){
+      Serial1.print("error");
+    }else{
+      Serial1.print(bme.temperature);
+    }
+    Serial1.print(",");
+
+    imuStuff();
+    Serial1.print(accel.x());
+    Serial1.print(",");
+    Serial1.print(accel.y());
+    Serial1.print(",");
+    Serial1.print(accel.z());
+    Serial1.print(",");
+
+    Serial1.print(gyro.x());
+    Serial1.print(",");
+    Serial1.print(gyro.y());
+    Serial1.print(",");
+    Serial1.print(gyro.z());
+    Serial1.print(",");
+
+    Serial1.print(orientation.x());
+    Serial1.print(",");
+    Serial1.print(orientation.y());
+    Serial1.print(",");
+    Serial1.print(orientation.z());
+    Serial1.print(",");
+
+    gpsLatitude = (float)gps.getLatitude() * 0.0000001;
+    Serial1.print(gpsLatitude);
+    Serial1.print(",");
+    gpsLongitude = (float)gps.getLongitude() * 0.0000001;
+    Serial1.print(gpsLongitude);
+    Serial1.print(",");
+    gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+    Serial1.println(gpsAltitude);
+  }
+}
+
 void setup() {
   //Set pinmode for all pins
   pinMode(SWITCH_PIN, INPUT);
@@ -354,6 +412,9 @@ void setup() {
   digitalWrite(SENSOR_RESET, HIGH);
 
   Serial1.begin(9600);
+  if(digitalRead(SWITCH_PIN) == HIGH){
+    Serial.begin(9600);
+  }
   Wire.begin();
 
   //Try to start sensors for 5 seconds, if all on continue
@@ -374,7 +435,6 @@ void setup() {
       break;
     }
   }
-  sensorSetup.reset();
   digitalWrite(DEBUG_LED_1, LOW);
   if(!bno.begin() || !bme.begin() || !gps.begin()){
     /*
@@ -388,7 +448,7 @@ void setup() {
     digitalWrite(DEBUG_LED_2, LOW);
     digitalWrite(DEBUG_LED_3, LOW);
   }
-  
+
   uint8_t system, gyroscope, accel, mag = 0;
   bno.setExtCrystalUse(true);
   while(gyroscope < 3 && mag < 3){
@@ -396,7 +456,7 @@ void setup() {
     digitalWrite(DEBUG_LED_2, HIGH);
   }
   digitalWrite(DEBUG_LED_2, LOW);
-  //imuStuff();
+  imuStuff();
   gyro.toDegrees();
 
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -405,9 +465,15 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320,150);
 
+  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+
   //GPS Stuff
   gps.setI2COutput(COM_TYPE_UBX, 250);
   gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
+
+  gpsLatitude = (float)gps.getLatitude() * 0.0000001;
+  gpsLongitude = (float)gps.getLongitude() * 0.0000001;
+  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
 
   //Reset All Timers
   hazardTimer.reset();
@@ -416,61 +482,12 @@ void setup() {
   vPIDTimer.reset();
 }
 
-void loggerPrint(long frequency){
-  if(logTimer.getTime() > frequency){
-    logTimer.reset();
-    packetCount++;
-    Serial1.print("MOAB");
-    Serial1.print(",");
-    Serial1.print(missionTime.printableTimer());
-    Serial1.print(",");
-    Serial1.print(packetCount);
-    Serial1.print(",");
-    Serial1.print(flightState);
-    Serial1.print(",");
-    if(!bme.performReading()){
-      Serial1.print("error");
-    }else{
-      Serial1.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    }
-    Serial1.print(",");
-    if(!bme.performReading()){
-      Serial1.print("error");
-    }else{
-      Serial1.print(bme.temperature);
-    }
-    Serial1.print(",");
-    //imuStuff();
-    Serial1.print(accel.x());
-    Serial1.print(",");
-    Serial1.print(accel.y());
-    Serial1.print(",");
-    Serial1.print(accel.z());
-    Serial1.print(",");
-    Serial1.print(gyro.x());
-    Serial1.print(",");
-    Serial1.print(gyro.y());
-    Serial1.print(",");
-    Serial1.print(gyro.z());
-    Serial1.print(",");
-    Serial1.print(orientation.x());
-    Serial1.print(",");
-    Serial1.print(orientation.y());
-    Serial1.print(",");
-    Serial1.print(orientation.z());
-    Serial1.print(",");
-    float gpsLat = (float)gps.getLatitude() * 0.0000001;
-    Serial1.print(gpsLat);
-    Serial1.print(",");
-    float gpsLong = (float)gps.getLongitude() * 0.0000001;
-    Serial1.print(gpsLong);
-    Serial1.print(",");
-    float gpsAlt = gpsAltitude;
-    Serial1.println(gpsAlt);
-  }
-}
-
 void loop() {
+  if(digitalRead(SWITCH_PIN) == HIGH){
+    int loopTime = millis() - lastLoop;
+    lastLoop = millis();
+    Serial.println(loopTime);
+  }
   loggerPrint(250);
 
   //Hazard Light Blinking, should always be happening
@@ -481,8 +498,8 @@ void loop() {
   }else{
     hazardTimer.reset();
   }
-  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
-  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+
+  //Only try to call gps 4 times a second, might decrease
 
   PWMSetup(vPID(0));
   PWMLoop();
@@ -508,10 +525,10 @@ void loop() {
       When GPS Altitude hits 18km (18000m)
       */
       {
-        float gpsAlt = gpsAltitude;
-        float bmeAlt = bmeAltitude;
+        //float gpsAlt = gpsAltitude;
+        //float bmeAlt = bmeAltitude;
 
-        if(gpsAlt > 18000 || bmeAlt > 18000){
+        if(gpsAltitude > 18000 || bmeAltitude > 18000){
           flightState = CONTROLLED;
         }
       }      

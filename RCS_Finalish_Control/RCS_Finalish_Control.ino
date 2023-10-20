@@ -27,6 +27,7 @@ FlightState flightState = INIT;
 FlightState currentFlightState = flightState;
 
 //Semaphores
+bool switchSem = false;
 bool brightLEDSem = false;
 bool missionTimeSem = false;
 bool flightStateSem = false;
@@ -62,8 +63,6 @@ void imuStuff(){
 }
 
 //Assign pins for everything that is needed
-const int I2C_DATA = 4;
-const int I2C_CLOCK = 5;
 const int SWITCH_PIN = 6;
 const int SENSOR_RESET = 11;
 const int DEBUG_LED_1 = 8;
@@ -75,8 +74,12 @@ const int SOLENOID_CW = 21;
 
 //Random Variables
 float gpsAltitude;
+float gpsLatitude;
+float gpsLongitude;
 float bmeAltitude;
 int packetCount = 0;
+int lastLoop = 0;
+int lastLoop1 = 0;
 
 float vPIDError;
 float vLastTarget = 0.0;
@@ -89,7 +92,7 @@ float vkd = 0.0;
 float vPIDOutput;
 
 //PWM Variables
-const float MIN_CYCLE = 1.0/20.0;
+const float MIN_CYCLE = 1.0/25.0;
 const float MIN_CYCLE_MILLIS = MIN_CYCLE * 1000.0;
 
 //TODO: Tune PID and put variables here
@@ -226,7 +229,7 @@ class CountdownTimer: public Timer{
 Timer missionTime;
 Timer hazardTimer;
 Timer errorTimer;
-Timer logTimer;
+//Timer logTimer;
 //Timer oPIDTimer;
 Timer vPIDTimer;
 
@@ -245,6 +248,9 @@ float vPID(float target){
   float current = gyro.z();
   imuGyroSem = false;
   vPIDError = (current - target);
+  if(abs(vPIDError) < 3){
+    return 0;
+  }
   //vPIDError = (-1) * (target - current);
   vd = (vPIDError - vp) / vPIDTimer.getTime();
   vi = vi + (vPIDError * vPIDTimer.getTime());
@@ -264,7 +270,6 @@ float vPID(float target){
   }
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
-  
   return (-1) * vPIDOutput;
 }
 
@@ -362,105 +367,103 @@ void errorCycle(long frequency){
   }
 }
 
-void loggerPrint(long frequency){
-  if(logTimer.getTime() > frequency){
-    logTimer.reset();
-    packetCount++;
-    Serial1.print("MOAB");
-    Serial1.print(",");
+void loggerPrint(){
+  packetCount++;
+  Serial1.print("MOAB");
+  Serial1.print(",");
 
-    while(missionTimeSem);
-    missionTimeSem = true;
-    Serial1.print(missionTime.printableTimer());
-    missionTimeSem = false;
+  while(missionTimeSem);
+  missionTimeSem = true;
+  Serial1.print(missionTime.printableTimer());
+  missionTimeSem = false;
 
-    Serial1.print(",");
-    Serial1.print(packetCount);
-    Serial1.print(",");
+  Serial1.print(",");
+  Serial1.print(packetCount);
+  Serial1.print(",");
 
-    while(flightStateSem);
-    flightStateSem = true;
-    Serial1.print(flightState);
-    flightStateSem = false;
+  while(flightStateSem);
+  flightStateSem = true;
+  Serial1.print(flightState);
+  flightStateSem = false;
 
-    Serial1.print(",");
+  Serial1.print(",");
 
-    while(bmeAltSem);
-    bmeAltSem = true;
-    if(!bme.performReading()){
-      Serial1.print("error");
-    }else{
-      Serial1.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    }
-    bmeAltSem = false;
-
-    Serial1.print(",");
-
-    while(bmeTempSem);
-    bmeTempSem = true;
-    if(!bme.performReading()){
-      Serial1.print("error");
-    }else{
-      Serial1.print(bme.temperature);
-    }
-    bmeTempSem = false;
-
-    Serial1.print(",");
-
-    imuStuff();
-    while(imuAccelSem);
-    imuAccelSem = true;
-    Serial1.print(accel.x());
-    Serial1.print(",");
-    Serial1.print(accel.y());
-    Serial1.print(",");
-    Serial1.print(accel.z());
-    imuAccelSem = false;
-
-    Serial1.print(",");
-
-    while(imuGyroSem);
-    imuGyroSem = true;
-    Serial1.print(gyro.x());
-    Serial1.print(",");
-    Serial1.print(gyro.y());
-    Serial1.print(",");
-    Serial1.print(gyro.z());
-    imuGyroSem = true;
-
-    Serial1.print(",");
-
-    while(imuOrientSem);
-    imuOrientSem = true;
-    Serial1.print(orientation.x());
-    Serial1.print(",");
-    Serial1.print(orientation.y());
-    Serial1.print(",");
-    Serial1.print(orientation.z());
-    imuOrientSem = false;
-
-    Serial1.print(",");
-
-    while(gpsLatSem);
-    gpsLatSem = true;
-    float gpsLat = (float)gps.getLatitude() * 0.0000001;
-    gpsLatSem = false;
-    Serial1.print(gpsLat);
-    Serial1.print(",");
-
-    while(gpsLongSem);
-    gpsLongSem = true;
-    float gpsLong = (float)gps.getLongitude() * 0.0000001;
-    gpsLongSem = false;
-    Serial1.print(gpsLong);
-    Serial1.print(",");
-
-    while(gpsAltSem);
-    gpsAltSem = true;
-    float gpsAlt = gpsAltitude;
-    gpsAltSem = false;
-    Serial1.println(gpsAlt);
+  while(bmeAltSem);
+  bmeAltSem = true;
+  if(!bme.performReading()){
+    //Serial1.print("error");
+  }else{
+    bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
   }
+  Serial1.print(bmeAltitude);
+  bmeAltSem = false;
+
+  Serial1.print(",");
+
+  while(bmeTempSem);
+  bmeTempSem = true;
+  if(!bme.performReading()){
+    Serial1.print("error");
+  }else{
+    Serial1.print(bme.temperature);
+  }
+  bmeTempSem = false;
+
+  Serial1.print(",");
+
+  imuStuff();
+  while(imuAccelSem);
+  imuAccelSem = true;
+  Serial1.print(accel.x());
+  Serial1.print(",");
+  Serial1.print(accel.y());
+  Serial1.print(",");
+  Serial1.print(accel.z());
+  imuAccelSem = false;
+
+  Serial1.print(",");
+
+  while(imuGyroSem);
+  imuGyroSem = true;
+  Serial1.print(gyro.x());
+  Serial1.print(",");
+  Serial1.print(gyro.y());
+  Serial1.print(",");
+  Serial1.print(gyro.z());
+  imuGyroSem = true;
+
+  Serial1.print(",");
+
+  while(imuOrientSem);
+  imuOrientSem = true;
+  Serial1.print(orientation.x());
+  Serial1.print(",");
+  Serial1.print(orientation.y());
+  Serial1.print(",");
+  Serial1.print(orientation.z());
+  imuOrientSem = false;
+
+  Serial1.print(",");
+
+  while(gpsLatSem);
+  gpsLatSem = true;
+  gpsLatitude = (float)gps.getLatitude() * 0.0000001;
+  Serial1.print(gpsLatitude);
+  gpsLatSem = false;
+  Serial1.print(",");
+
+  while(gpsLongSem);
+  gpsLongSem = true;
+  gpsLongitude = (float)gps.getLongitude() * 0.0000001;
+  Serial1.print(gpsLongitude);
+  gpsLongSem = false;
+  Serial1.print(",");
+
+  while(gpsAltSem);
+  gpsAltSem = true;
+  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+  Serial1.println(gpsAltitude);
+  gpsAltSem = false;
 }
 
 void setup() {
@@ -473,10 +476,19 @@ void setup() {
   pinMode(BRIGHT_LED, OUTPUT);
   pinMode(SOLENOID_CW, OUTPUT);
   pinMode(SOLENOID_CCW, OUTPUT);
+  digitalWrite(SENSOR_RESET, HIGH);
 
   Wire.begin();
-  digitalWrite(SENSOR_RESET, HIGH);
-  Serial.begin(9600);
+
+  Serial1.begin(9600);
+
+  while(switchSem);
+  switchSem = true;
+  if(digitalRead(SWITCH_PIN) == HIGH){
+    switchSem = false;
+    Serial.begin(9600);
+  }
+  switchSem = false;
 
   //Try to start sensors for 5 seconds, if all on continue
   sensorSetup.reset(5000);
@@ -529,15 +541,33 @@ void setup() {
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320,150);
+  while(bmeAltSem);
+  bmeAltSem = true;
+  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  bmeAltSem = false;
 
   //GPS Stuff
   gps.setI2COutput(COM_TYPE_UBX, 250);
   gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
+  while(gpsLatSem);
+  gpsLatSem = true;
+  gpsLatitude = (float)gps.getLatitude() * 0.0000001;
+  gpsLatSem = false;
+
+  while(gpsLongSem);
+  gpsLongSem = true;
+  gpsLongitude = (float)gps.getLongitude() * 0.0000001;
+  gpsLongSem = false;
+
+  while(gpsAltSem);
+  gpsAltSem = true;
+  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+  gpsAltSem = false;
 
   //Reset All Timers
   hazardTimer.reset();
   errorTimer.reset();
-  logTimer.reset();
+  //logTimer.reset();
   //oPIDTimer.reset();
   vPIDTimer.reset();
   while(flightStateSem);
@@ -546,40 +576,36 @@ void setup() {
   flightStateSem = false;
 }
 
-void setup1(){
-  Serial1.begin(9600);
-  while(!Serial1);
-  
-  while(1){
-    //Don't exit setup1 until setup is done
-    while(flightStateSem);
-    flightStateSem = true;
-    if(flightState != INIT){
-      flightStateSem = false;
-      break;
-    }
-    flightStateSem = false;
-  }
-}
-
 void loop() {
-  //loggerPrint(250);
-  if(hazardTimer.getTime() < 500){
+  while(switchSem);
+  switchSem = true;
+  if(digitalRead(SWITCH_PIN) == HIGH){
+    switchSem = false;
+    int loopTime = millis() - lastLoop;
+    lastLoop = millis();
+    Serial.begin(9600);
+    Serial.print("Loop Time: ");
+    Serial.println(loopTime);
+  }
+  switchSem = false;
+
+  if(hazardTimer.getTime() < 100){
     digitalWrite(BRIGHT_LED, HIGH);
   }else if(hazardTimer.getTime() < 1000){
     digitalWrite(BRIGHT_LED, LOW);
   }else{
     hazardTimer.reset();
   }
-  /*
+
+  PWMSetup(vPID(0));
+  PWMLoop();
+  
   while(flightStateSem);
   flightStateSem = true;
   currentFlightState = flightState;
   flightStateSem = false;
-  */
-  PWMSetup(vPID(0));
-  PWMLoop();
-  Serial.println(millis());
+  
+  //Serial.println(millis());
   switch(currentFlightState){
     case FLIGHT_READY:
       /*
@@ -641,22 +667,34 @@ void loop() {
       break;
   }
 }
+
+void setup1(){
+  //Serial1.begin(9600);
+  while(1){
+    //Don't exit setup1 until setup is done
+    digitalWrite(DEBUG_LED_3, HIGH);
+    while(flightStateSem);
+    flightStateSem = true;
+    if(flightState != INIT){
+      digitalWrite(DEBUG_LED_3, LOW);
+      flightStateSem = false;
+      break;
+    }
+    flightStateSem = false;
+  }
+}
+
 void loop1(){
-  //Hazard Light Blinking, should always be happening
-  //Serial.print("Looping");
-  //Serial.println(hazardTimer.getTime());
-  //Slow gps
-  /*
-  while(gpsAltSem);
-  gpsAltSem = true;
-  gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
-  gpsAltSem = false;
-  */
-  /*
-  while(bmeAltSem);
-  bmeAltSem = true;
-  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
-  bmeAltSem = false;'=
-  */
-  loggerPrint(1000);
+  loggerPrint();
+  while(switchSem);
+  switchSem = true;
+  if(digitalRead(SWITCH_PIN) == HIGH){
+    switchSem = false;
+    int loopTime = millis() - lastLoop1;
+    lastLoop1 = millis();
+    Serial.begin(9600);
+    Serial.print("Loop 1 Time: ");
+    Serial.println(loopTime);
+  }
+  switchSem = false;
 }
