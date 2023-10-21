@@ -613,7 +613,7 @@ void loop() {
       break;
     case FLIGHT_READY:
       loggerPrint(1000);
-      digitalWrite(DEBUG_LED_3, )
+      digitalWrite(DEBUG_LED_3, HIGH);
       /*
       Exit Condition:
       When acceleration upwards is greater than 3 m/s^2
