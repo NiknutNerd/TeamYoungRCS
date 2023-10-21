@@ -33,7 +33,7 @@ int switchState;
 float oPIDError;
 float oLastTarget = 0.0;
 float op = 0.0;
-float okp = 0.1;
+float okp = 0.15;
 float oi = 0.0;
 float oki = 0.0;
 float od = 0.0;
@@ -43,11 +43,12 @@ float oPIDOutput;
 float vPIDError;
 float vLastTarget = 0.0;
 float vp = 0.0;
-float vkp = 0.035;
+float vkp = 0.01;
+//float vkp = 0.02;
 float vi = 0.0;
-float vki = 0.0;
+float vki = 0.00001;
 float vd = 0.0;
-float vkd = 0.0;
+float vkd = 0.00;
 float vPIDOutput;
 
 float inputBeingUsed;
@@ -86,6 +87,14 @@ class CountdownTimer{
       }
       return timeLeft;
     }
+
+    bool isDone(){
+      if((targetTime - (long)millis()) <= 0){
+        return true;
+      }else{
+        return false;
+      }
+    }
     void changeTimer(long newTime){
       initialTime = newTime;
       targetTime = (long)millis() + newTime;
@@ -121,6 +130,9 @@ float oPID(float target){
   }else{
     oPIDError = target - current;
   }
+  if(abs(oPIDError) < 5){
+    return 0;
+  }
   od = (oPIDError - op) / oPIDTimer.getTime();
   oi = oi + (oPIDError * oPIDTimer.getTime());
   op = oPIDError;
@@ -137,17 +149,16 @@ float oPID(float target){
   }
   oPIDOutput = (okp * op) + (oki * oi) + (okd * od);
   oLastTarget = target;
-
   
-  return (-1) * oPIDOutput;
-  //return oPIDOutput;
+  //return (-1) * oPIDOutput;
+  return oPIDOutput;
 }
 
 float vPID(float target){
   imuStuff();
   float current = gyro.z();
-  vPIDError = (current - target);
-  if(abs(vPIDError) < 2){
+  vPIDError = (target - current);
+  if(abs(vPIDError) < 5){
     return 0;
   }
   //vPIDError = (-1) * (target - current);
@@ -162,89 +173,75 @@ float vPID(float target){
     vi = 0;
   }
   
-  if(vki * vi > .2){
-    vi = .2 / vki;
-  }else if(vki * vi < -.2){
-    vi = (-1) * (.2 / vki);
+  if(vki * vi > .05){
+    vi = 0;
+  }else if(vki * vi < -.05){
+    vi = 0;
   }
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
   
-  return (-1) * vPIDOutput;
+  //return (-1) * vPIDOutput;
+  return vPIDOutput;
 }
 
 
-void PWMSetup(double percent){
-  if(aCountdown.getTime() > 0 || bCountdown.getTime() > 0){
+void PWMSetup(float percent){
+  if(!aCountdown.isDone() || !bCountdown.isDone()){
     return;
   }
-  inputBeingUsed = percent;
-  if(percent < .075 && percent > -.075){
+  if(abs(percent) < 0.075){
     aCountdown.changeTimer(0);
     aOnCountdown.changeTimer(0);
-    aOffCountdown.changeTimer(0);
-
     bCountdown.changeTimer(0);
     bOnCountdown.changeTimer(0);
-    bOffCountdown.changeTimer(0);
   }else if(percent > 0){
-    bCountdown.changeTimer(0);
-    bOnCountdown.changeTimer(0);
-    bOffCountdown.changeTimer(0);
-    digitalWrite(SOLENOID_CW, LOW);
-
-    onPercent = percent;
-    offPercent = 1 - percent;
-    if(percent > .8){
-      onPercent = .8;
-      offPercent = .2;
+    if(percent > .9){
+      onPercent = .9;
+      offPercent = .1;
+    }else{
+      onPercent = percent;
+      offPercent = 1 - percent;
     }
+
     if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
-      onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
+      onTime = (onPercent / offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
-      //Change to else
       onTime = MIN_CYCLE_MILLIS;
-      offTime = (offPercent/onPercent) * MIN_CYCLE_MILLIS;
+      offTime = (offPercent / onPercent) * MIN_CYCLE_MILLIS;
     }
-    aCountdown.changeTimer(onTime + offTime);
+
     aOnCountdown.changeTimer(onTime);
-    aOffCountdown.changeTimer(onTime+offTime);
+    aCountdown.changeTimer(onTime + offTime);
   }else if(percent < 0){
-    aCountdown.changeTimer(0);
-    aOnCountdown.changeTimer(0);
-    aOffCountdown.changeTimer(0);
-    digitalWrite(SOLENOID_CCW, LOW);
-    
-    onPercent = abs(percent);
-    offPercent = 1 - abs(percent);
     if(abs(percent) > .9){
       onPercent = .9;
       offPercent = .1;
+    }else{
+      onPercent = percent;
+      offPercent = 1 - percent;
     }
+
     if(onPercent >= offPercent){
       offTime = MIN_CYCLE_MILLIS;
-      onTime = (onPercent/offPercent) * MIN_CYCLE_MILLIS;
+      onTime = (onPercent / offPercent) * MIN_CYCLE_MILLIS;
     }else if(offPercent > onPercent){
       onTime = MIN_CYCLE_MILLIS;
-      offTime = (offPercent/onPercent) * MIN_CYCLE_MILLIS;
+      offTime = (offPercent / onPercent) * MIN_CYCLE_MILLIS;
     }
-    bCountdown.changeTimer(onTime + offTime);
+
     bOnCountdown.changeTimer(onTime);
-    bOffCountdown.changeTimer(onTime+offTime);
+    bCountdown.changeTimer(onTime + offTime);
   }
 }
 void PWMLoop(){
   if(aOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CW, HIGH);
     digitalWrite(SOLENOID_CCW, LOW);
-  }else if(aOffCountdown.getTime() > 0){
-    digitalWrite(SOLENOID_CW, LOW);
   }else if(bOnCountdown.getTime() > 0){
     digitalWrite(SOLENOID_CCW, HIGH);
     digitalWrite(SOLENOID_CW, LOW);
-  }else if(bOffCountdown.getTime() > 0){
-    digitalWrite(SOLENOID_CCW, LOW);
   }else{
     digitalWrite(SOLENOID_CW, LOW);
     digitalWrite(SOLENOID_CCW, LOW);
@@ -366,8 +363,72 @@ void limitedPrint(long frequency){
     printTimer.reset();
   }
 }
+void loggerPrint(long frequency){
+  orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+  accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+  if(printTimer.getTime() > frequency){
+    //imuStuff();
+    Serial1.println("Telemetry: ");
+
+    /*
+    Serial1.println("Acceleration: ");
+    Serial1.print("X: ");
+    Serial1.println(accel.x());
+    Serial1.print("Y: ");
+    Serial1.println(accel.y());
+    Serial1.print("Z: ");
+    Serial1.println(accel.z());
+
+    Serial1.println("Linear Acceleration: ");
+    Serial1.print("X: ");
+    Serial1.println(linAccel.x());
+    Serial1.print("Y: ");
+    Serial1.println(linAccel.y());
+    Serial1.print("Z: ");
+    Serial1.println(linAccel.z());
+    
+    sensors_event_t event;
+    bno.getEvent(&event);
+    Serial1.println("Heading: ");
+    Serial1.print(event.orientation.roll);
+    */
+
+    Serial1.println("Orientation: ");
+    Serial1.print("X: ");
+    Serial1.print(orientation.x());
+    Serial1.println(" degrees");
+
+    /*
+    Serial1.println("Gyroscope Degrees: ");
+    Serial1.print("Z: ");
+    Serial1.print(gyro.z());
+    Serial1.println(" degrees per second");
+    */
+
+    Serial1.println("vPID STUFFS: ");
+    Serial1.print("oPIDError: ");
+    Serial1.println(oPIDError);
+
+    Serial1.print("oPIDOutput: ");
+    Serial1.println(oPIDOutput);
+    Serial1.print("Gyro");
+    Serial1.println(gyro.z());
+    
+    Serial1.print("vPIDOutput: ");
+    Serial1.println(vPIDOutput);
+    Serial1.print("vPIDError: ");
+    Serial1.println(vPIDError);
+    Serial1.print("PWM Input Being Used: ");
+    Serial1.println(inputBeingUsed);
+    printTimer.reset();
+  }
+}
 void loop() {
   imuStuff();
+  //loggerPrint(1000);
+
   /*
   if(gyro.z() > 10.0){
     float input = (.02) * gyro.z();
@@ -386,7 +447,7 @@ void loop() {
   
   switchState = digitalRead(SWITCH_PIN);
   if(switchState == HIGH){
-    limitedPrint(1000);
+    
   }
   /*
   if(solenoidTimer.getTime() < 10000){
@@ -395,11 +456,10 @@ void loop() {
     PWMSetup(vPID(-10));
   }
   */
-  PWMSetup(vPID(0));
-  //PWMSetup(vPID(oPID(90)));
+  PWMSetup(vPID(oPID(90)));
+  //PWMSetup(vPID(0));
+  //PWMSetup(.5);
   PWMLoop();
-  Serial1.println(gyro.z());
-  
 }
 
 void loop1(){

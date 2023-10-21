@@ -2,14 +2,16 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include <Adafruit_BME680.h>
+//#include <Adafruit_BME680.h>
+#include <Zanshin_BME680.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <utility/imumaths.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
-Adafruit_BME680 bme;
+//Adafruit_BME680 bme;
+BME680_Class bme;
 SFE_UBLOX_GNSS gps;
 
 //Flight state enum
@@ -54,11 +56,13 @@ float gpsAltitude;
 float gpsLatitude;
 float gpsLongitude;
 float bmeAltitude;
+int32_t bmeTemperature;
+int32_t bmePressure;
 int lastLoop = 0;
 int packetCount = 0;
 
 //PWM Variables
-const float MIN_CYCLE = 1.0/25.0;
+const float MIN_CYCLE = 1.0/20.0;
 const float MIN_CYCLE_MILLIS = MIN_CYCLE * 1000.0;
 
 //PID Variables
@@ -314,6 +318,11 @@ void PWMLoop(){
   }
 }
 
+float readAltitude(){
+  float atmospheric = bmePressure / 100.0;
+  return 44330.0 * (1.0 - pow(atmospheric / SEALEVELPRESSURE_HPA, 0.1903));
+}
+
 void errorCycle(long frequency){
   if(errorTimer.getTime() < frequency){
     digitalWrite(DEBUG_LED_1, HIGH);
@@ -338,8 +347,32 @@ void errorCycle(long frequency){
   }
 }
 
+void loggerHeader(){
+  Serial1.print("TEAM_ID,");
+  Serial1.print("MISSION_TIME,");
+  Serial1.print("PACKET_COUNT,");
+  Serial1.print("SW_STATE,");
+  Serial1.print("BME_ALTITUDE,");
+  Serial1.print("BME_TEMP,");
+  Serial1.print("ACC_X,");
+  Serial1.print("ACC_Y,");
+  Serial1.print("ACC_Z,");
+  Serial1.print("GYRO_X,");
+  Serial1.print("GYRO_Y,");
+  Serial1.print("GYRO_Z,");
+  Serial1.print("ORIENT_X,");
+  Serial1.print("ORIENT_Y,");
+  Serial1.print("ORIENT_Z,");
+  Serial1.print("GPS_LAT,");
+  Serial1.print("GPS_LONG,");
+  Serial1.println("GPS_ALT,");
+}
+
 void loggerPrint(long frequency){
   if(logTimer.getTime() > frequency){
+    if(digitalRead(SWITCH_PIN) == HIGH){
+      Serial.println("Log Start");
+    }
     logTimer.reset();
     packetCount++;
     Serial1.print("MOAB");
@@ -351,19 +384,25 @@ void loggerPrint(long frequency){
     Serial1.print(flightState);
     Serial1.print(",");
 
-    if(!bme.performReading()){
-      //Serial1.print("error");
-    }else{
-      bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+    if(digitalRead(SWITCH_PIN) == HIGH){
+      Serial.println("Sensor Reading Start");
     }
+
+    int32_t bmeHumidity;
+    int32_t bmeGas;
+    //int bmePressure;
+    bme.getSensorData(bmeTemperature, bmeHumidity, bmePressure, bmeGas, false);
+    
+    bmeAltitude = readAltitude();
     Serial1.print(bmeAltitude);
     Serial1.print(",");
 
-    if(!bme.performReading()){
-      Serial1.print("error");
-    }else{
-      Serial1.print(bme.temperature);
+    float bmeTemp = bmeTemperature / 100.0;
+    Serial1.print(bmeTemp);
+    if(digitalRead(SWITCH_PIN) == HIGH){
+      Serial.println("BME Reading Done");
     }
+
     Serial1.print(",");
 
     imuStuff();
@@ -388,14 +427,21 @@ void loggerPrint(long frequency){
     Serial1.print(orientation.z());
     Serial1.print(",");
 
+    if(digitalRead(SWITCH_PIN) == HIGH){
+      Serial.println("IMU Reading Done");
+    }
+
     gpsLatitude = (float)gps.getLatitude() * 0.0000001;
-    Serial1.print(gpsLatitude);
+    Serial1.print(gpsLatitude, 6);
     Serial1.print(",");
     gpsLongitude = (float)gps.getLongitude() * 0.0000001;
-    Serial1.print(gpsLongitude);
+    Serial1.print(gpsLongitude, 6);
     Serial1.print(",");
     gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
-    Serial1.println(gpsAltitude);
+    Serial1.println(gpsAltitude, 6);
+    if(digitalRead(SWITCH_PIN) == HIGH){
+      Serial.println("GPS Reading Done");
+    }
   }
 }
 
@@ -416,6 +462,7 @@ void setup() {
     Serial.begin(9600);
   }
   Wire.begin();
+  loggerHeader();
 
   //Try to start sensors for 5 seconds, if all on continue
   /*
@@ -459,17 +506,29 @@ void setup() {
   imuStuff();
   gyro.toDegrees();
 
+  /*
   bme.setTemperatureOversampling(BME680_OS_8X);
   bme.setHumidityOversampling(BME680_OS_2X);
   bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  bme.setGasHeater(320,150);
+  bme.setIIRFilterSize(BME680_FILTER_SIZE_4);
+  */
+  bme.setOversampling(TemperatureSensor, Oversample16);
+  bme.setOversampling(HumiditySensor, Oversample16);
+  bme.setOversampling(PressureSensor, Oversample16);
+  bme.setIIRFilter(IIR4);
+  bme.setGas(0,0);
 
-  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+
+  //bme.setGasHeater(20,0);
+
+  bmeAltitude = readAltitude();
 
   //GPS Stuff
   gps.setI2COutput(COM_TYPE_UBX, 250);
-  gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
+  gps.setNavigationFrequency(5);
+  gps.setI2CpollingWait(250);
+  if(!gps.setDynamicModel(DYN_MODEL_AIRBORNE4g));
+  //gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
 
   gpsLatitude = (float)gps.getLatitude() * 0.0000001;
   gpsLongitude = (float)gps.getLongitude() * 0.0000001;
@@ -488,7 +547,8 @@ void loop() {
     lastLoop = millis();
     Serial.println(loopTime);
   }
-  loggerPrint(250);
+
+  loggerPrint(1000);
 
   //Hazard Light Blinking, should always be happening
   if(hazardTimer.getTime() < 500){
