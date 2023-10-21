@@ -2,15 +2,14 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
-#include <Adafruit_BME680.h>
+#include <Zanshin_BME680.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <utility/imumaths.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
-//Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x28, &Wire);
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
-Adafruit_BME680 bme;
+BME680_Class bme;
 SFE_UBLOX_GNSS gps;
 
 //Flight state enum
@@ -29,6 +28,7 @@ FlightState currentFlightState = flightState;
 //Semaphores
 bool switchSem = false;
 bool brightLEDSem = false;
+bool i2cSem = false;
 bool missionTimeSem = false;
 bool flightStateSem = false;
 bool bmeAltSem = false;
@@ -48,22 +48,13 @@ imu::Vector<3> linAccel;
 
 //Function to call to make sure the imu data is accessable
 void imuStuff(){
-  while(imuGyroSem);
-  imuGyroSem = true;
+  while(i2cSem);
+  i2cSem = true;
   gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-  imuGyroSem = false;
-
-  while(imuAccelSem);
-  imuAccelSem = true;
   accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-  imuAccelSem = false;
-
-  while(imuOrientSem);
-  imuOrientSem = true;
   orientation = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  imuOrientSem = false;
-
   linAccel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+  i2cSem = false;
 }
 
 //Assign pins for everything that is needed
@@ -81,6 +72,8 @@ float gpsAltitude;
 float gpsLatitude;
 float gpsLongitude;
 float bmeAltitude;
+int32_t bmeTemperature;
+int32_t bmePressure;
 int packetCount = 0;
 int lastLoop = 0;
 int lastLoop1 = 0;
@@ -247,10 +240,10 @@ CountdownTimer bCountdown;
 
 float vPID(float target){
   imuStuff();
-  while(imuGyroSem);
-  imuGyroSem = true;
+  while(i2cSem);
+  i2cSem = true;
   float current = gyro.z();
-  imuGyroSem = false;
+  i2cSem = false;
   vPIDError = (current - target);
   if(abs(vPIDError) < 3){
     return 0;
@@ -345,7 +338,10 @@ void PWMLoop(){
   }
 }
 
-//PIDs
+float readAltitude(){
+  float atmospheric = bmePressure / 100.0;
+  return 44330.0 * (1.0 - pow(atmospheric / SEALEVELPRESSURE_HPA, 0.1903));
+}
 
 void errorCycle(long frequency){
   if(errorTimer.getTime() < frequency){
@@ -371,6 +367,27 @@ void errorCycle(long frequency){
   }
 }
 
+void loggerHeader(){
+  Serial1.print("TEAM_ID,");
+  Serial1.print("MISSION_TIME,");
+  Serial1.print("PACKET_COUNT,");
+  Serial1.print("SW_STATE,");
+  Serial1.print("BME_ALTITUDE,");
+  Serial1.print("BME_TEMP,");
+  Serial1.print("ACC_X,");
+  Serial1.print("ACC_Y,");
+  Serial1.print("ACC_Z,");
+  Serial1.print("GYRO_X,");
+  Serial1.print("GYRO_Y,");
+  Serial1.print("GYRO_Z,");
+  Serial1.print("ORIENT_X,");
+  Serial1.print("ORIENT_Y,");
+  Serial1.print("ORIENT_Z,");
+  Serial1.print("GPS_LAT,");
+  Serial1.print("GPS_LONG,");
+  Serial1.println("GPS_ALT,");
+}
+
 void loggerPrint(){
   packetCount++;
   Serial1.print("MOAB");
@@ -392,13 +409,17 @@ void loggerPrint(){
 
   Serial1.print(",");
 
+  int32_t bmeHumidity;
+  int32_t bmeGas;
+
+  while(i2cSem);
+  i2cSem = true;
+  bme.getSensorData(bmeTemperature, bmeHumidity, bmePressure, bmeGas, false);
+  i2cSem = false;
+
   while(bmeAltSem);
   bmeAltSem = true;
-  if(!bme.performReading()){
-    //Serial1.print("error");
-  }else{
-    bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
-  }
+  bmeAltitude = readAltitude();
   Serial1.print(bmeAltitude);
   bmeAltSem = false;
 
@@ -406,66 +427,93 @@ void loggerPrint(){
 
   while(bmeTempSem);
   bmeTempSem = true;
-  if(!bme.performReading()){
-    Serial1.print("error");
-  }else{
-    Serial1.print(bme.temperature);
-  }
+  float bmeTemp = bmeTemperature / 100.0;
+  Serial1.print(bmeTemp);
   bmeTempSem = false;
 
   Serial1.print(",");
 
   imuStuff();
-  while(imuAccelSem);
-  imuAccelSem = true;
+  
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(accel.x());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(accel.y());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(accel.z());
-  imuAccelSem = false;
+  i2cSem = false;
+  
 
   Serial1.print(",");
 
-  while(imuGyroSem);
-  imuGyroSem = true;
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(gyro.x());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(gyro.y());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(gyro.z());
-  imuGyroSem = false;
+  i2cSem = false;
 
   Serial1.print(",");
 
-  while(imuOrientSem);
-  imuOrientSem = true;
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(orientation.x());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(orientation.y());
+  i2cSem = false;
   Serial1.print(",");
+  while(i2cSem);
+  i2cSem = true;
   Serial1.print(orientation.z());
-  imuOrientSem = false;
+  i2cSem = false;
 
   Serial1.print(",");
 
   while(gpsLatSem);
   gpsLatSem = true;
+  while(i2cSem);
+  i2cSem = true;
   gpsLatitude = (float)gps.getLatitude() * 0.0000001;
+  i2cSem = false;
   Serial1.print(gpsLatitude);
   gpsLatSem = false;
+
   Serial1.print(",");
 
   while(gpsLongSem);
   gpsLongSem = true;
+  while(i2cSem);
+  i2cSem = true;
   gpsLongitude = (float)gps.getLongitude() * 0.0000001;
+  i2cSem = false;
   Serial1.print(gpsLongitude);
   gpsLongSem = false;
   Serial1.print(",");
 
   while(gpsAltSem);
   gpsAltSem = true;
+  while(i2cSem);
+  i2cSem = true;
   gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+  i2cSem = false;
   Serial1.println(gpsAltitude);
   gpsAltSem = false;
 }
@@ -493,6 +541,7 @@ void setup() {
     Serial.begin(9600);
   }
   switchSem = false;
+  loggerHeader();
 
   //Try to start sensors for 5 seconds, if all on continue
   sensorSetup.reset(5000);
@@ -518,41 +567,45 @@ void setup() {
   }
 
   //Imu callibration
-  while(imuGyroSem);
-  while(imuAccelSem);
-  imuGyroSem = true;
-  imuAccelSem = true;
+  while(i2cSem);
+  i2cSem = true;
   uint8_t system, gyroscope, accel, mag = 0;
   bno.setExtCrystalUse(true);
   while(gyroscope < 3 && mag < 3){
     bno.getCalibration(&system, &gyroscope, &accel, &mag);
     digitalWrite(DEBUG_LED_2, HIGH);
   }
-  imuGyroSem = false;
-  imuAccelSem = false;
+  i2cSem = false;
   digitalWrite(DEBUG_LED_2, LOW);
   imuStuff();
   //Set the gyro data to be in degrees
   //DON'T SET TO DEGREES TWICE, WILL BREAK EVERYTHING
-  while(imuGyroSem);
-  imuGyroSem = true;
+  while(i2cSem);
+  i2cSem = true;
   gyro.toDegrees();
-  imuGyroSem = false;
+  i2cSem = false;
 
   //BME Stuff
-  bme.setTemperatureOversampling(BME680_OS_8X);
-  bme.setHumidityOversampling(BME680_OS_2X);
-  bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  bme.setGasHeater(20,0);
+  while(i2cSem);
+  i2cSem = true;
+  bme.setOversampling(TemperatureSensor, Oversample16);
+  bme.setOversampling(HumiditySensor, Oversample16);
+  bme.setOversampling(PressureSensor, Oversample16);
+  bme.setIIRFilter(IIR4);
+  bme.setGas(0,0);
   while(bmeAltSem);
   bmeAltSem = true;
-  bmeAltitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  bmeAltitude = readAltitude();
+  i2cSem = false;
   bmeAltSem = false;
 
   //GPS Stuff
+  while(i2cSem);
+  i2cSem = true;
   gps.setI2COutput(COM_TYPE_UBX, 250);
-  gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
+  gps.setNavigationFrequency(5);
+  gps.setI2CpollingWait(250);
+  if(!gps.setDynamicModel(DYN_MODEL_AIRBORNE4g));
   while(gpsLatSem);
   gpsLatSem = true;
   gpsLatitude = (float)gps.getLatitude() * 0.0000001;
@@ -566,6 +619,7 @@ void setup() {
   while(gpsAltSem);
   gpsAltSem = true;
   gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
+  i2cSem = false;
   gpsAltSem = false;
 
   //Reset All Timers

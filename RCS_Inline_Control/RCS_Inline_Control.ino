@@ -6,6 +6,7 @@
 #include <Zanshin_BME680.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <utility/imumaths.h>
+#include <Servo.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
@@ -13,6 +14,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55);
 //Adafruit_BME680 bme;
 BME680_Class bme;
 SFE_UBLOX_GNSS gps;
+Servo fucker;
 
 //Flight state enum
 enum FlightState{
@@ -50,6 +52,7 @@ const int DEBUG_LED_3 = 25;
 const int BRIGHT_LED = 19;
 const int SOLENOID_CCW = 20;
 const int SOLENOID_CW = 21;
+const int SERVO_PWM = 18;
 
 //Random Variables
 float gpsAltitude;
@@ -62,18 +65,29 @@ int lastLoop = 0;
 int packetCount = 0;
 
 //PWM Variables
-const float MIN_CYCLE = 1.0/20.0;
+const float MIN_CYCLE = 1.0/25.0;
 const float MIN_CYCLE_MILLIS = MIN_CYCLE * 1000.0;
 
 //PID Variables
+float oPIDError;
+float oLastTarget = 0.0;
+float op = 0.0;
+float okp = 0.2;
+float oi = 0.0;
+float oki = 0.0;
+float od = 0.0;
+float okd = 0.0;
+float oPIDOutput;
+
 float vPIDError;
 float vLastTarget = 0.0;
 float vp = 0.0;
 float vkp = 0.035;
+//float vkp = 0.02;
 float vi = 0.0;
-float vki = 0.0;
+float vki = 0.00001;
 float vd = 0.0;
-float vkd = 0.0;
+float vkd = 0.00;
 float vPIDOutput;
 
 //TODO: Tune PID and put variables here
@@ -207,11 +221,12 @@ class CountdownTimer: public Timer{
     }
 };
 //Timers
+Timer servoTimer;
 Timer missionTime;
 Timer hazardTimer;
 Timer errorTimer;
 Timer logTimer;
-//Timer oPIDTimer;
+Timer oPIDTimer;
 Timer vPIDTimer;
 
 //Countdowns
@@ -223,11 +238,47 @@ CountdownTimer aCountdown;
 CountdownTimer bOnCountdown;
 CountdownTimer bCountdown;
 
+
+float oPID(float target){
+  imuStuff();
+  float current = orientation.x();
+  if((target - current) > 180){
+    oPIDError = (target - current) - 360;
+  }else if((target - current) < -180){
+    oPIDError = (target - current) + 360;
+  }else{
+    oPIDError = target - current;
+  }
+  if(abs(oPIDError) < 5){
+    return 0;
+  }
+  od = (oPIDError - op) / oPIDTimer.getTime();
+  oi = oi + (oPIDError * oPIDTimer.getTime());
+  op = oPIDError;
+  
+  oPIDTimer.reset();
+  //add way to reset i if target is changed
+  if(target != oLastTarget){
+    oi = 0;
+  }
+  if(oki * oi > .2){
+    oi = .2 / oki;
+  }else if(oki * oi < -.2){
+    oi = (-1) * (.2 / oki);
+  }
+  oPIDOutput = (okp * op) + (oki * oi) + (okd * od);
+  oLastTarget = target;
+  
+  return oPIDOutput;
+}
+
 float vPID(float target){
   imuStuff();
   float current = gyro.z();
-  vPIDError = (current - target);
-  //vPIDError = (-1) * (target - current);
+  vPIDError = (target - current);
+  if(abs(vPIDError) < 5){
+    return 0;
+  }
   vd = (vPIDError - vp) / vPIDTimer.getTime();
   vi = vi + (vPIDError * vPIDTimer.getTime());
   vp = vPIDError;
@@ -239,15 +290,15 @@ float vPID(float target){
     vi = 0;
   }
   
-  if(vki * vi > .2){
-    vi = .2 / vki;
-  }else if(vki * vi < -.2){
-    vi = (-1) * (.2 / vki);
+  if(vki * vi > .05){
+    vi = 0;
+  }else if(vki * vi < -.05){
+    vi = 0;
   }
   vLastTarget = target;
   vPIDOutput = (vkp * vp) + (vki * vi) + (vkd * vd);
   
-  return (-1) * vPIDOutput;
+  return vPIDOutput;
 }
 
 void PWMSetup(float percent){
@@ -455,7 +506,11 @@ void setup() {
   pinMode(BRIGHT_LED, OUTPUT);
   pinMode(SOLENOID_CW, OUTPUT);
   pinMode(SOLENOID_CCW, OUTPUT);
+  pinMode(SERVO_PWM, OUTPUT);
   digitalWrite(SENSOR_RESET, HIGH);
+
+  fucker.attach(SERVO_PWM);
+  fucker.write(150); //Initialize level, range 130 (back) to 170 (forward)
 
   Serial1.begin(9600);
   if(digitalRead(SWITCH_PIN) == HIGH){
@@ -465,15 +520,6 @@ void setup() {
   loggerHeader();
 
   //Try to start sensors for 5 seconds, if all on continue
-  /*
-  sensorSetup.reset(5000);
-  while(!sensorSetup.isDone()){
-    digitalWrite(DEBUG_LED_1, HIGH);
-    if(bno.begin() && bme.begin() && gps.begin()){
-      break;
-    }
-  }
-  */
 
   sensorSetup.reset(5000);
   while(!sensorSetup.isDone()){
@@ -525,7 +571,7 @@ void setup() {
 
   //GPS Stuff
   gps.setI2COutput(COM_TYPE_UBX, 250);
-  gps.setNavigationFrequency(5);
+  gps.setNavigationFrequency(4);
   gps.setI2CpollingWait(250);
   if(!gps.setDynamicModel(DYN_MODEL_AIRBORNE4g));
   //gps.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
@@ -535,9 +581,11 @@ void setup() {
   gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
 
   //Reset All Timers
+  servoTimer.reset();
   hazardTimer.reset();
   errorTimer.reset();
   logTimer.reset();
+  oPIDTimer.reset();
   vPIDTimer.reset();
 }
 
@@ -548,10 +596,8 @@ void loop() {
     Serial.println(loopTime);
   }
 
-  loggerPrint(1000);
-
   //Hazard Light Blinking, should always be happening
-  if(hazardTimer.getTime() < 500){
+  if(hazardTimer.getTime() < 350){
     digitalWrite(BRIGHT_LED, HIGH);
   }else if(hazardTimer.getTime() < 1000){
     digitalWrite(BRIGHT_LED, LOW);
@@ -560,24 +606,32 @@ void loop() {
   }
 
   //Only try to call gps 4 times a second, might decrease
-
-  PWMSetup(vPID(0));
-  PWMLoop();
   
-  currentFlightState = flightState;
-  switch(currentFlightState){
+  switch(flightState){
     case INIT:
       flightState = FLIGHT_READY;
       break;
     case FLIGHT_READY:
+      loggerPrint(1000);
+      digitalWrite(DEBUG_LED_3, )
       /*
       Exit Condition:
       When acceleration upwards is greater than 3 m/s^2
       or
       When altitude is greater than 300m
       */
+      
+      {
+        float vertAccel = linAccel.z();
+        float gpsAlt = gpsAltitude;
+        if(vertAccel >= 3.0 || gpsAlt >= 400.0){
+          flightState = ASCENT;
+        }
+      }
+
       break;
     case ASCENT:
+      loggerPrint(1000);
       /*
       Exit Condition:
       When BME Altitude hits 18km (18000m)
@@ -585,35 +639,65 @@ void loop() {
       When GPS Altitude hits 18km (18000m)
       */
       {
-        //float gpsAlt = gpsAltitude;
-        //float bmeAlt = bmeAltitude;
+        float gpsAlt = gpsAltitude;
+        float bmeAlt = bmeAltitude;
 
-        if(gpsAltitude > 18000 || bmeAltitude > 18000){
+        if(gpsAltitude > 20000 || bmeAltitude > 20000){
+          servoTimer.reset();
           flightState = CONTROLLED;
         }
       }      
       break;
     case CONTROLLED:
+      loggerPrint(1000);
+      if(servoTimer.getTime() < 5000){
+        fucker.write(130);
+      }else if(servoTimer.getTime() < 10000){
+        fucker.write(170);
+      }else if(servoTimer.getTime() < 15000){
+        fucker.write(150);
+      }
+      PWMSetup(vPID(oPID(90)));
+      PWMLoop();
       /*
       Exit Condition:
       When vertical velocity is a sustained negative 3 m/s
       or
       Altitude is less than 17km 
-      */
+      */{
+        float vertAccel = linAccel.z();
+        float bmeAlt = bmeAltitude;
+        float gpsAlt = gpsAltitude;
+        if(vertAccel <= -5.0 || bmeAlt <= 19000 || gpsAlt <= 19000){
+          flightState = FREEFALL;
+        }
+      }
       break;
     case FREEFALL:
+      loggerPrint(1000);
+      PWMLoop();
       /*
       Exit Condition:
       Vertical Velocity is less than 0.5 m/s
       or
       Altitude is less than 300m
       */
+      {
+        float vertAccel = linAccel.z();
+        float bmeAlt = bmeAltitude;
+        float gpsAlt = gpsAltitude;
+        if(vertAccel >= -0.5 || bmeAlt <= 400.0 || gpsAlt <= 400.0){
+          flightState = LANDED;
+        }
+      }
+
       break;
     case LANDED:
       //Do landed stuff
+      //DONT DO ANYTHING BUT BLINK LIGHTS
       break;
     default:
-      //errorCycle(500);
+      errorCycle(500);
       break;
   }
 }
