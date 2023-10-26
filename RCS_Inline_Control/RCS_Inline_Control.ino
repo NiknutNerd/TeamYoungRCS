@@ -490,6 +490,7 @@ void loggerPrint(long frequency){
     Serial1.print(",");
     gpsAltitude = (float)gps.getAltitudeMSL() / 1000.0;
     Serial1.println(gpsAltitude, 6);
+    
     if(digitalRead(SWITCH_PIN) == HIGH){
       Serial.println("GPS Reading Done");
     }
@@ -552,20 +553,11 @@ void setup() {
   imuStuff();
   gyro.toDegrees();
 
-  /*
-  bme.setTemperatureOversampling(BME680_OS_8X);
-  bme.setHumidityOversampling(BME680_OS_2X);
-  bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_4);
-  */
   bme.setOversampling(TemperatureSensor, Oversample16);
   bme.setOversampling(HumiditySensor, Oversample16);
   bme.setOversampling(PressureSensor, Oversample16);
   bme.setIIRFilter(IIR4);
   bme.setGas(0,0);
-
-
-  //bme.setGasHeater(20,0);
 
   bmeAltitude = readAltitude();
 
@@ -591,6 +583,7 @@ void setup() {
 
 void loop() {
   if(digitalRead(SWITCH_PIN) == HIGH){
+    Serial.begin(9600);
     int loopTime = millis() - lastLoop;
     lastLoop = millis();
     Serial.println(loopTime);
